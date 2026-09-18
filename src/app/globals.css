@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --ostra-signal: 63 216 168;
+    --ostra-surface: 10 14 21;
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-void-950 text-zinc-200 antialiased;
+    font-feature-settings: "cv11", "ss01";
+    /* Never allow sideways scroll on phones. */
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background: rgb(var(--ostra-signal) / 0.3);
+    color: #eafff8;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.22);
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--ostra-signal) / 0.7);
+    outline-offset: 2px;
+  }
+
+  textarea,
+  input,
+  button {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .ostra-panel {
+    @apply rounded-2xl border border-white/[0.06] bg-void-900/80;
+  }
+
+  .ostra-chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-400;
+  }
+
+  .ostra-label {
+    @apply font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500;
+  }
+}
+
+@layer utilities {
+  /* Faint technical grid used behind the whole control center. */
+  .ostra-grid {
+    background-image:
+      linear-gradient(to right, rgba(255, 255, 255, 0.026) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.026) 1px, transparent 1px);
+    background-size: 46px 46px;
+  }
+
+  .ostra-glow {
+    background:
+      radial-gradient(60% 45% at 18% 0%, rgba(31, 191, 143, 0.14), transparent 70%),
+      radial-gradient(45% 40% at 92% 8%, rgba(59, 130, 246, 0.1), transparent 72%);
+  }
+
+  .ostra-hairline {
+    border-color: rgba(255, 255, 255, 0.06);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .text-pretty-ostra {
+    text-wrap: pretty;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
