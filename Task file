@@ -1,0 +1,399 @@
+Ostra v0 — Build the AI Communication Website
+
+You are building the first working prototype of Ostra, an experimental autonomous AI-agent system.
+
+Core concept
+
+Ostra is designed around:
+
+- one AI model as the brain
+- an agent runtime around that model
+- tools that the agent can eventually use
+- persistent memory
+- scheduled/background tasks
+- web and API interfaces
+- future business/income automation
+
+For this first version, DO NOT build the entire autonomous system.
+
+Build only the foundation required to communicate with the Ostra model.
+
+Primary goal
+
+Create a polished web application that allows a user to communicate with Ostra through a chat interface.
+
+The initial architecture is:
+
+User
+→ Ostra Web UI
+→ Ostra API
+→ Model endpoint
+→ Response
+→ Ostra Web UI
+
+The model will initially be a small open-source model running experimentally on Kaggle.
+
+The architecture must therefore keep the model provider replaceable.
+
+Do NOT hard-code the application around one specific model.
+
+---
+
+TECH STACK
+
+Use:
+
+- Next.js
+- TypeScript
+- Tailwind CSS
+- Vercel-compatible deployment
+- Server-side API routes for communication with the model
+- Fetch/API calls for model communication
+
+Avoid unnecessary dependencies.
+
+Do not introduce a database for v0 unless absolutely necessary.
+
+Do not introduce Supabase, Firebase, Redis, PostgreSQL, authentication, payments, or external SaaS services yet.
+
+The goal is a working minimal Ostra interface.
+
+---
+
+UI
+
+Create a modern dark AI-assistant interface.
+
+Brand:
+
+OSTRA
+
+The interface should feel like a personal AI control center rather than a generic ChatGPT clone.
+
+Main areas:
+
+1. Sidebar
+
+Include:
+
+- Ostra logo/name
+- New conversation
+- Conversations
+- Tasks
+- Memory
+- Settings
+
+For v0, Tasks, Memory and Settings can be placeholders, but the navigation structure should already exist.
+
+2. Main chat
+
+Display:
+
+- Ostra greeting
+- user messages
+- Ostra responses
+- timestamps
+- loading state
+- error state
+- message input
+- send button
+
+The input should support:
+
+- Enter to send
+- Shift+Enter for newline
+- mobile-friendly layout
+- long messages
+- scrolling conversation history
+
+3. Ostra identity
+
+Display a small status indicator such as:
+
+"OSTRA"
+"AI SYSTEM"
+
+Do not pretend that Ostra is currently fully autonomous.
+
+The UI should clearly be a prototype.
+
+---
+
+API
+
+Create:
+
+POST /api/chat
+
+Request:
+
+{
+"message": "Hello Ostra",
+"conversationId": "optional-id"
+}
+
+Response:
+
+{
+"message": "Hello. I'm Ostra.",
+"conversationId": "id"
+}
+
+Also create:
+
+GET /api/health
+
+Response:
+
+{
+"status": "ok",
+"system": "ostra"
+}
+
+---
+
+MODEL ADAPTER
+
+Create a model abstraction.
+
+Example conceptual interface:
+
+ModelProvider
+
+with a method similar to:
+
+generate(messages)
+
+The chat API must call the model through this abstraction.
+
+The first implementation should be a configurable HTTP model provider.
+
+Environment variable:
+
+MODEL_API_URL
+
+Optional:
+
+MODEL_API_KEY
+
+MODEL_NAME
+
+This is important because the model may initially live on Kaggle but later move to:
+
+- another VPS
+- a local server
+- an OpenAI API
+- another inference provider
+- an Ostra-owned model server
+
+Changing the model should NOT require rewriting the frontend.
+
+---
+
+KAGGLE COMPATIBILITY
+
+The web application must be capable of communicating with a remotely hosted model endpoint.
+
+Do not assume the model runs inside Vercel.
+
+Vercel is the web/application layer.
+
+Kaggle is currently the experimental model-compute layer.
+
+Therefore:
+
+Vercel
+→ model HTTP endpoint
+→ Kaggle model
+
+Keep the endpoint configurable through environment variables.
+
+Important:
+
+Do not expose MODEL_API_KEY or other private credentials to the browser.
+
+All model requests must happen server-side.
+
+---
+
+TEMPORARY MODEL MOCK
+
+Because the Kaggle model may not be connected immediately, implement a development fallback.
+
+Environment variable:
+
+MODEL_MODE=mock
+
+When MODEL_MODE=mock:
+
+POST /api/chat
+
+should return a simple simulated Ostra response.
+
+When:
+
+MODEL_MODE=http
+
+the API should call MODEL_API_URL.
+
+This allows the Vercel application to be completed and tested before the Kaggle model is online.
+
+---
+
+CONVERSATIONS
+
+For v0, conversation history can be stored in browser/local state.
+
+Do not build a database yet.
+
+The architecture should make it easy to replace local storage with a database later.
+
+Store:
+
+- conversation ID
+- title
+- messages
+- createdAt
+- updatedAt
+
+Do not store API keys in localStorage.
+
+---
+
+SECURITY
+
+Implement basic security from the beginning.
+
+Requirements:
+
+- never expose model API keys to the client
+- never expose server environment variables
+- validate incoming API requests
+- limit unreasonable message sizes
+- return safe API errors
+- don't expose stack traces to users
+- don't trust client-provided conversation data
+- keep secrets in environment variables
+
+Add:
+
+.env.example
+
+with:
+
+MODEL_MODE=mock
+MODEL_API_URL=
+MODEL_API_KEY=
+MODEL_NAME=
+
+Do not put real secrets in the repository.
+
+---
+
+MOBILE
+
+The website must work well on Android phones.
+
+Prioritize:
+
+- responsive layout
+- large touch targets
+- fixed chat input
+- smooth scrolling
+- no horizontal overflow
+- usable sidebar/navigation on small screens
+
+The user will primarily access Ostra from a mobile phone.
+
+---
+
+FUTURE ARCHITECTURE
+
+Design the code so these can be added later without major rewrites:
+
+1. Persistent memory
+2. PostgreSQL/Supabase
+3. Agent task queue
+4. Scheduled tasks
+5. Browser automation
+6. Tool calling
+7. YouTube integration
+8. GitHub integration
+9. Social-media automation
+10. Business/product management
+11. Multiple model providers
+12. Human approval system
+13. Telegram interface
+14. Ostra mobile application
+15. Autonomous background operation
+
+Do not implement these features now unless required for the foundation.
+
+---
+
+IMPORTANT DESIGN PRINCIPLE
+
+Ostra is NOT supposed to be just a chat UI.
+
+The long-term architecture is:
+
+Model = brain
+
+Agent runtime = decision/execution layer
+
+Tools = actions
+
+Memory = persistent knowledge
+
+Scheduler = autonomy
+
+Website = communication/control interface
+
+For v0, only implement:
+
+Model + basic runtime + website communication.
+
+But structure the code so the rest can be added cleanly.
+
+---
+
+DEPLOYMENT
+
+The project must deploy successfully on Vercel.
+
+Before finishing:
+
+1. install dependencies
+2. run lint/type checks
+3. run production build
+4. fix all build errors
+5. verify API routes
+6. verify mock mode
+7. verify mobile layout
+8. verify environment variables
+9. provide deployment instructions
+
+Do not leave placeholder code that breaks the build.
+
+---
+
+DEFINITION OF DONE
+
+The task is complete only when:
+
+- the Ostra website loads
+- the chat interface works
+- user can send a message
+- mock Ostra responds
+- conversation persists locally
+- /api/health works
+- HTTP model provider is implemented
+- model URL is configurable
+- secrets remain server-side
+- mobile layout works
+- production build succeeds
+- Vercel deployment is supported
+
+Do not over-engineer the project.
+
+Build a clean foundation for the next Ostra phase.
