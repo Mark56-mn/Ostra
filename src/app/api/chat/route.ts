@@ -4,12 +4,17 @@
  * Flow: validate → rate limit → agent runtime → provider gateway → safe response.
  * Everything upstream of `getAgentRuntime()` happens server-side, so
  * API keys and any other server env var stay hidden.
+ *
+ * Stage 2: an optional `model` selection ({ provider, model }) may be sent.
+ * It is validated against the server-controlled allowlist before use —
+ * non-allowlisted models and providers without a configured key are rejected.
  */
 import { NextResponse } from "next/server";
 import { getAgentRuntime } from "@/lib/agent/runtime";
 import { jsonError, logServerError, noStoreHeaders } from "@/lib/api/errors";
 import { getClientKey, getRateLimiter } from "@/lib/api/rate-limit";
 import { parseChatRequest } from "@/lib/api/validation";
+import { ModelSelectionError, validateModelSelection } from "@/lib/model-selection";
 import { getActiveProviderConfig, type ChatApiSuccess } from "@/lib/system/info";
 
 export const runtime = "nodejs";
@@ -59,6 +64,16 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const { message, conversationId, history } = validation.value;
+
+  // Stage 2: optional per-request model selection, validated server-side.
+  const body = parsedBody as Record<string, unknown>;
+  const providerOverride = resolveProviderOverride(body.model);
+  if ("error" in providerOverride && providerOverride.error) {
+    const failure = providerOverride as { error: ModelSelectionError };
+    return jsonError(failure.error.status, failure.error.code, failure.error.message, requestId);
+  }
+  const override = (providerOverride as { override?: { providerId: string; modelId: string } }).override;
+
   const providerConfig = getActiveProviderConfig();
 
   try {
@@ -67,6 +82,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       history,
       message,
       signal: request.signal,
+      ...(override ? { providerOverride: override } : {}),
     });
 
     const payload: ChatApiSuccess = {
@@ -82,14 +98,33 @@ export async function POST(request: Request): Promise<NextResponse> {
   } catch (error) {
     return modelFailure(error, {
       requestId,
-      provider: providerConfig.id,
-      model: providerConfig.modelId,
+      provider: override?.providerId ?? providerConfig.id,
+      model: override?.modelId ?? providerConfig.modelId,
     });
   }
 }
 
 export async function GET(): Promise<NextResponse> {
   return jsonError(405, "method_not_allowed", "Use POST to send a message to Ostra.");
+}
+
+/**
+ * Resolve the optional `model` field from the request body into a validated
+ * override, or null when absent. Throws-safe: returns a ModelSelectionError
+ * when the selection fails validation.
+ */
+function resolveProviderOverride(
+  raw: unknown,
+): { override: null } | { override: { providerId: string; modelId: string }; error?: never } | { error: ModelSelectionError } {
+  if (raw === undefined || raw === null) return { override: null };
+  try {
+    const selection = validateModelSelection(raw);
+    if (selection.provider === "mock") return { override: null };
+    return { override: { providerId: selection.provider, modelId: selection.model } };
+  } catch (error) {
+    if (error instanceof ModelSelectionError) return { error };
+    throw error;
+  }
 }
 
 /** Maps provider failures to safe client-facing errors. */

@@ -10,8 +10,10 @@
 import { ModelProviderError } from "@/lib/model/errors";
 import type { GenerateOptions, GenerateResult, ModelMessage, ModelProvider } from "@/lib/model/types";
 import { isAbortError } from "@/lib/utils";
+import { readEnv, readEnvInt, readTemperature } from "./env";
 import { resolveProviderConfig } from "./config";
 import { callGemini } from "./gemini-adapter";
+import { getProviderDefinition } from "./registry";
 import type { ResolvedProvider } from "./types";
 
 const MAX_RESPONSE_CHARS = 200_000;
@@ -25,6 +27,25 @@ export async function callProvider(
   messages: ModelMessage[],
   options: GenerateOptions = {},
 ): Promise<GenerateResult> {
+  // Stage 2: a validated per-request override wins over the env default.
+  if (options.providerOverride) {
+    const provider = resolveOverrideProvider(options.providerOverride.providerId, options.providerOverride.modelId);
+    if (!provider) {
+      throw new ModelProviderError("Requested provider is not registered", {
+        code: "model_misconfigured",
+        provider: "unknown",
+      });
+    }
+    if (!provider.apiKey) {
+      throw new ModelProviderError(`${provider.name} API key is not configured`, {
+        code: "model_misconfigured",
+        provider: provider.id,
+      });
+    }
+    if (provider.adapter === "gemini") return callGemini(provider, messages, options);
+    return callOpenAICompatible(provider, messages, options);
+  }
+
   const config = resolveProviderConfig();
 
   // Invalid provider configuration — fail with clear error
@@ -45,6 +66,26 @@ export async function callProvider(
 
   // OpenAI-compatible: OpenRouter, Groq, Mistral, NVIDIA, custom
   return callOpenAICompatible(config.provider, messages, options);
+}
+
+/**
+ * Resolve a validated per-request override into a concrete provider config.
+ * Returns null when the provider id is not registered.
+ */
+function resolveOverrideProvider(providerId: string, modelId: string): ResolvedProvider | null {
+  const definition = getProviderDefinition(providerId);
+  if (!definition) return null;
+  return {
+    id: definition.id,
+    name: definition.name,
+    baseUrl: readEnv("AI_BASE_URL") ?? definition.baseUrl,
+    apiKey: readEnv("AI_API_KEY") ?? readEnv(definition.keyEnvVar),
+    model: modelId,
+    adapter: definition.adapter,
+    timeoutMs: readEnvInt("MODEL_TIMEOUT_MS", 60_000, 5_000, 300_000),
+    maxTokens: readEnvInt("MODEL_MAX_TOKENS", 1_024, 64, 32_000),
+    temperature: readTemperature(),
+  };
 }
 
 /**

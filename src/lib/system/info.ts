@@ -63,6 +63,15 @@ export interface SystemInfo {
   keyPresent: boolean;
   adapter: string;
   configError?: string;
+  run?: { timeoutMs: number; maxTokens: number; temperature: number };
+  providers?: Array<{
+    id: string;
+    name: string;
+    active: boolean;
+    keyPresent: boolean;
+    keyEnvVar: string;
+    freeTier: boolean;
+  }>;
   timestamp: string;
 }
 

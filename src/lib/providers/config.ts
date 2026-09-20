@@ -10,23 +10,9 @@
  *
  * Invalid AI_PROVIDER values produce a clear error, NOT silent mock mode.
  */
+import { readEnv, readEnvInt, readTemperature } from "./env";
 import { getProviderDefinition, PROVIDERS } from "./registry";
 import type { ProviderHealthStatus, ResolvedProvider } from "./types";
-
-function readEnv(name: string): string | null {
-  const raw = process.env[name];
-  if (typeof raw !== "string") return null;
-  const trimmed = raw.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function readEnvInt(name: string, fallback: number, min: number, max: number): number {
-  const raw = readEnv(name);
-  if (!raw) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.min(max, Math.max(min, Math.trunc(parsed)));
-}
 
 export type ProviderMode = "mock" | "provider";
 
@@ -59,6 +45,12 @@ export function resolveProviderConfig(): ProviderConfig {
   // --- New system: AI_PROVIDER ---
   const providerId = readEnv("AI_PROVIDER");
   if (providerId) {
+    // Explicit mock is always valid — it must not be treated as an unknown provider.
+    if (providerId.toLowerCase() === "mock") {
+      cached = { mode: "mock", provider: null, legacyApiUrl: null, legacyApiKey: null, configError: null };
+      return cached;
+    }
+
     const definition = getProviderDefinition(providerId);
     if (!definition) {
       const validIds = PROVIDERS.map((p) => p.id).join(", ");
@@ -132,14 +124,6 @@ export function resolveProviderConfig(): ProviderConfig {
     configError: null,
   };
   return cached;
-}
-
-function readTemperature(): number {
-  const raw = readEnv("MODEL_TEMPERATURE");
-  if (!raw) return 0.7;
-  const parsed = Number.parseFloat(raw);
-  if (!Number.isFinite(parsed)) return 0.7;
-  return Math.min(2, Math.max(0, Math.round(parsed * 100) / 100));
 }
 
 /** Clear the memoised config (for tests or env changes). */

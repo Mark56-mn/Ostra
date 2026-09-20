@@ -4,11 +4,11 @@ import Link from "next/link";
 import { type ComponentType, useEffect, useMemo, useState } from "react";
 import { useChat } from "@/hooks/use-chat";
 import { cn, formatRelativeTime } from "@/lib/utils";
-import { IconChat, IconClose, IconLayers, IconList, IconPlus, IconSettings, IconTrash } from "./icons";
+import { IconChat, IconClose, IconCpu, IconLayers, IconList, IconPlus, IconSettings, IconTrash } from "./icons";
 import { OstraMark } from "./ostra-mark";
 import { SystemStatusChip } from "./system-status";
 
-export type NavId = "conversations" | "tasks" | "memory" | "settings";
+export type NavId = "conversations" | "models" | "tasks" | "memory" | "settings";
 
 interface NavItem {
   id: NavId;
@@ -20,6 +20,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: "conversations", label: "Conversations", href: "/", icon: IconChat },
+  { id: "models", label: "Models", href: "/models", icon: IconCpu },
   { id: "tasks", label: "Tasks", href: "/tasks", icon: IconList, soon: true },
   { id: "memory", label: "Memory", href: "/memory", icon: IconLayers, soon: true },
   { id: "settings", label: "Settings", href: "/settings", icon: IconSettings, soon: true },

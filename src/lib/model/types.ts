@@ -19,6 +19,11 @@ export interface GenerateOptions {
   signal?: AbortSignal;
   temperature?: number;
   maxTokens?: number;
+  /**
+   * Stage 2: per-request provider/model override. Must be validated against
+   * the server-side allowlist before it reaches the gateway.
+   */
+  providerOverride?: { providerId: string; modelId: string };
 }
 
 export interface GenerateUsage {

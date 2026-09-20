@@ -56,14 +56,14 @@ Browser → POST /api/chat → Agent Runtime → Provider Gateway → Provider A
 
 ### Supported providers
 
-| Provider | API Format | Free Tier | Key Env Var | Notes |
+| Provider | API Format | Free Tier (verified 2026-09-20) | Key Env Var | Notes |
 | --- | --- | --- | --- | --- |
-| **OpenRouter** | OpenAI-compatible | `:free` model suffix (rate-limited) | `OPENROUTER_API_KEY` | Free models available, availability may change |
-| **Groq** | OpenAI-compatible | Rate-limited free (~30 RPM) | `GROQ_API_KEY` | No credit card required, limits may change |
-| **Mistral** | OpenAI-compatible | Free tier currently documented | `MISTRAL_API_KEY` | Smaller models, check docs.mistral.ai |
-| **NVIDIA NIM** | OpenAI-compatible | Rate-limited free access | `NVIDIA_API_KEY` | 80+ models, limits may change |
-| **Google Gemini** | Gemini-native | Free tier currently documented | `GEMINI_API_KEY` | Generous limits, see ai.google.dev |
-| **Custom** | OpenAI-compatible | — | `AI_API_KEY` | Any OpenAI-compatible endpoint |
+| **OpenRouter** | OpenAI-compatible | Models with a `:free` suffix currently serve at $0 (rate-limited) | `OPENROUTER_API_KEY` | Free list changes frequently — check openrouter.ai before depending on it |
+| **Groq** | OpenAI-compatible | **Paid** — no free tier currently documented | `GROQ_API_KEY` | Llama models are Enterprise-only; developer plan is usage-based |
+| **Mistral** | OpenAI-compatible | **Paid** — no free API tier currently documented | `MISTRAL_API_KEY` | Paid plans include monthly API credits; the free consumer plan does not cover the API |
+| **NVIDIA NIM** | OpenAI-compatible | Free trial credits currently documented | `NVIDIA_API_KEY` | Credit availability and limits may change |
+| **Google Gemini** | Gemini-native | Free usage tier currently documented (rate-limited) | `GEMINI_API_KEY` | Limits vary per model and tier — see ai.google.dev |
+| **Custom** | OpenAI-compatible | — | `AI_API_KEY` | Any OpenAI-compatible endpoint (Kaggle tunnel, VPS, llama.cpp, …) |
 | **Mock** | Built-in | Always free | none | Simulated replies for development |
 
 > Free tiers and model availability change. Verify current status at each provider's documentation.
@@ -76,17 +76,21 @@ Browser → POST /api/chat → Agent Runtime → Provider Gateway → Provider A
 Switching providers is an **environment variable change**, not a code change:
 
 ```bash
-# Example: use Groq (fast, generous free tier)
-AI_PROVIDER=groq
-GROQ_API_KEY=your-groq-key
-
-# Example: use OpenRouter (largest free model catalog)
+# Example: use OpenRouter (models with a :free suffix currently serve at $0)
 AI_PROVIDER=openrouter
 OPENROUTER_API_KEY=your-openrouter-key
 
-# Example: use Gemini
+# Example: use NVIDIA NIM (Nemotron 3.5 Lightning 30B A3B — the task's target model)
+AI_PROVIDER=nvidia
+NVIDIA_API_KEY=your-nvidia-key
+
+# Example: use Gemini (free usage tier currently documented)
 AI_PROVIDER=gemini
 GEMINI_API_KEY=your-gemini-key
+
+# Example: use Groq (paid — no free tier currently documented)
+AI_PROVIDER=groq
+GROQ_API_KEY=your-groq-key
 ```
 
 The gateway automatically:
@@ -98,15 +102,19 @@ The gateway automatically:
 
 ### Default models
 
-Each provider has a sensible default model. Override with `AI_MODEL`:
+Each provider has a default model **verified against current provider documentation on 2026-09-20**.
+Override with `AI_MODEL`:
 
 | Provider | Default Model |
 | --- | --- |
-| OpenRouter | `meta-llama/llama-3.3-70b-instruct:free` |
-| Groq | `llama-3.3-70b-versatile` |
-| Mistral | `ministral-3-8b` |
-| NVIDIA | `nvidia/llama-3.1-nemotron-70b-instruct` |
+| OpenRouter | `nvidia/nemotron-3.5-lightning:free` |
+| Groq | `openai/gpt-oss-120b` |
+| Mistral | `mistral-small-latest` |
+| NVIDIA | `nvidia/nemotron-3.5-lightning-30b-a3b` |
 | Gemini | `gemini-2.5-flash` |
+
+Model IDs age quickly. If a default stops working, set `AI_MODEL` to a currently documented ID —
+no code change needed. The `/models` Model Control Center lists the current allowlisted catalog.
 
 ### Legacy compatibility
 
@@ -133,7 +141,7 @@ cp env.example .env.local
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `AI_PROVIDER` | no | Active provider: `openrouter`, `groq`, `mistral`, `nvidia`, `gemini`, `custom`, `mock` |
+| `AI_PROVIDER` | no | Active provider: `openrouter`, `groq`, `mistral`, `nvidia`, `gemini`, `mock` |
 | `AI_MODEL` | no | Model ID override (each provider has a default) |
 | `AI_API_KEY` | no | Generic key override (provider-specific keys take priority) |
 | `AI_BASE_URL` | no | Base URL override (each provider has a default) |
@@ -183,8 +191,8 @@ Ostra's own `/api/*` routes.
 {
   "message": "Hello. I'm Ostra.",
   "conversationId": "3f1c…",
-  "model": "llama-3.1-8b-instant",
-  "provider": "groq",
+  "model": "nvidia/nemotron-3.5-lightning:free",
+  "provider": "openrouter",
   "mode": "live",
   "latencyMs": 412
 }
@@ -194,6 +202,11 @@ An optional `history` array (`[{ "role": "user" | "assistant", "content": "…" 
 model sees recent turns. It is **untrusted input**: the server re-types it, caps it at 24 turns and
 `OSTRA_MAX_MESSAGE_LENGTH` per entry, drops unknown roles, and never uses it for anything
 privileged.
+
+An optional `model` field — `{ "provider": "openrouter", "model": "…" }` — selects an allowlisted
+provider/model for this turn (Stage 2). The server validates it against its catalog and rejects
+non-allowlisted models (`400 model_not_allowed`) and providers without a configured key
+(`409 key_missing`).
 
 Errors are always safe and shaped like this — no stack traces, no upstream URLs, no env values:
 
@@ -211,15 +224,69 @@ Status codes: `400` invalid input · `413` body too large · `415` wrong content
 {
   "status": "ok",
   "system": "ostra",
-  "version": "0.1.0",
-  "mode": "live",
-  "provider": "groq",
-  "model": "llama-3.1-8b-instant",
+  "version": "0.2.0",
+  "mode": "provider",
+  "provider": "openrouter",
+  "model": "nvidia/nemotron-3.5-lightning:free",
   "endpointConfigured": true,
-  "apiFormat": "openai-compatible",
+  "keyPresent": true,
+  "adapter": "openai-compatible",
+  "providers": [
+    { "id": "openrouter", "active": true, "keyPresent": true, "keyEnvVar": "OPENROUTER_API_KEY", "freeTier": true }
+  ],
   "timestamp": "2026-09-20T12:00:00.000Z"
 }
 ```
+
+`mode` is `mock` in development (no provider configured) or `provider` when a provider is active.
+Status is `ok` (working), `degraded` (provider set but key missing) or `error` (invalid config).
+Only key **presence** is reported — never key values.
+
+### `GET /api/models`
+
+The server-controlled model catalog for the Model Control Center (`/models`):
+
+```json
+{
+  "providers": [
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "keyEnvVar": "OPENROUTER_API_KEY",
+      "keyPresent": true,
+      "freeTier": true,
+      "models": [
+        { "id": "nvidia/nemotron-3.5-lightning:free", "name": "Nemotron 3.5 Lightning (Free)", "free": true }
+      ]
+    }
+  ],
+  "active": { "mode": "provider", "provider": "openrouter", "model": "nvidia/nemotron-3.5-lightning:free" },
+  "defaultSelection": { "provider": "openrouter", "model": "nvidia/nemotron-3.5-lightning:free" }
+}
+```
+
+### `POST /api/models/select`
+
+Deliberate model selection (Stage 2). Two shapes:
+
+```json
+{ "provider": "openrouter", "model": "qwen/qwen3.8-27b:free", "role": "general" }
+```
+
+```json
+{
+  "name": "Build feature X",
+  "models": [
+    { "provider": "openrouter", "model": "nvidia/nemotron-3.5-lightning:free", "role": "planner" },
+    { "provider": "gemini", "model": "gemini-2.5-flash", "role": "coder" }
+  ]
+}
+```
+
+Roles: `planner`, `coder`, `reviewer`, `executor`, `general`. Selections are validated against the
+server catalog; unknown providers, non-allowlisted models, duplicate roles and providers without a
+configured key are rejected. Nothing is executed by saving a configuration — Stage 2 only
+*configures* which models a future task would use.
 
 ## Architecture
 
@@ -228,21 +295,42 @@ src/
 ├── app/
 │   ├── api/chat/route.ts        # POST /api/chat — the only browser↔model door
 │   ├── api/health/route.ts      # GET  /api/health
+│   ├── api/models/route.ts      # GET  /api/models — server-controlled catalog
+│   ├── api/models/select/       # POST /api/models/select — validated selection
+│   ├── models/page.tsx          # Model Control Center (Stage 2 UI)
 │   ├── page.tsx                 # control center (conversation surface)
 │   ├── tasks/ memory/ settings/ # navigation sections, honest placeholders
 │   └── layout.tsx, globals.css  # shell, fonts, dark theme tokens
 ├── components/
 │   ├── app-shell.tsx sidebar.tsx system-status.tsx
-│   └── chat/                    # workspace, message list, composer, empty state
+│   ├── chat/                    # workspace, message list, composer, empty state
+│   └── models/                  # Model Control Center client component
 ├── hooks/use-chat.ts            # React binding for the store
 └── lib/
-    ├── providers/               # provider gateway, registry, config, adapters
-    ├── model/                   # types, config, mock + http providers, registry
+    ├── providers/               # gateway, registry, catalog, config, adapters
+    ├── model/                   # types, config, mock + http providers
+    ├── model-selection/         # Stage 2: allowlist validation + selection store
     ├── agent/                   # persona + runtime (context hook points)
     ├── api/                     # validation, rate limiting, safe errors
     ├── conversations/           # types, browser repository, external store
+    ├── tasks/types.ts           # typed task configuration schema
     └── chat/controller.ts       # client-side request lifecycle
+tests/                           # 85 tests: routing, gateway, security, selection
 ```
+
+## Model Control Center (Stage 2)
+
+The `/models` page is the single place where models are selected. Its rules:
+
+- The catalog is **server-controlled and allowlisted** — the UI can only offer what
+  `src/lib/providers/catalog.ts` lists, and every selection is re-validated server-side.
+- API keys never reach the browser. The catalog reports only whether a key is *present*.
+- Providers without a configured key are locked; selecting one returns `409 key_missing`.
+- A **default model** is one deliberate selection; a **task configuration** assigns up to 5 models
+  with roles (`planner`, `coder`, `reviewer`, `executor`, `general`). Duplicate models/roles are
+  rejected.
+- Saving a task configuration executes nothing. There is no queue and no autonomy loop yet —
+  those are Stages 3–4 and are not faked.
 
 ### Where future layers plug in
 
@@ -287,7 +375,9 @@ no durable server-side storage, and rate limiting is per server instance.
    needed.
 2. Add environment variables in *Project → Settings → Environment Variables*:
    - Start with `AI_PROVIDER=mock` (or leave unset) to confirm the deployment works.
-   - Then set `AI_PROVIDER=groq` and `GROQ_API_KEY=your-key` for a live provider.
+   - Then set `AI_PROVIDER=openrouter` and `OPENROUTER_API_KEY=your-key` for a live provider
+     (models with a `:free` suffix currently serve at $0), or `AI_PROVIDER=nvidia` +
+     `NVIDIA_API_KEY=your-key` for Nemotron 3.5 Lightning 30B A3B.
 3. Deploy, then check `https://<your-app>/api/health` — it should report `status: "ok"`.
 4. Switch providers by changing `AI_PROVIDER` and the corresponding key. No code changes needed.
 

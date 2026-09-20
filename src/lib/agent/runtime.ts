@@ -27,6 +27,11 @@ export interface RuntimeInput {
   signal?: AbortSignal;
   temperature?: number;
   maxTokens?: number;
+  /**
+   * Stage 2: validated provider/model override for this turn. Must come from
+   * the allowlist check in @/lib/model-selection — never raw client input.
+   */
+  providerOverride?: { providerId: string; modelId: string };
 }
 
 export interface RuntimeResult {
@@ -70,6 +75,7 @@ export class AgentRuntime {
       signal: input.signal,
       temperature: input.temperature,
       maxTokens: input.maxTokens,
+      providerOverride: input.providerOverride,
     });
 
     return {

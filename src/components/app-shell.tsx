@@ -10,6 +10,7 @@ import { SystemStatusChip } from "./system-status";
 
 const SECTION_TITLES: Record<NavId, string> = {
   conversations: "Conversations",
+  models: "Models",
   tasks: "Tasks",
   memory: "Memory",
   settings: "Settings",

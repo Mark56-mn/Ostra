@@ -13,15 +13,18 @@
 import type { ProviderDefinition } from "./types";
 
 export const PROVIDERS: ProviderDefinition[] = [
+  // Verification note (2026-09-20): model IDs below were checked against each
+  // provider's current official docs/API. Free-tier flags are deliberately
+  // conservative — they describe what is documented today, not a promise.
   {
     id: "openrouter",
     name: "OpenRouter",
     baseUrl: "https://openrouter.ai/api/v1",
     keyEnvVar: "OPENROUTER_API_KEY",
     adapter: "openai-compatible",
-    defaultModel: "meta-llama/llama-3.3-70b-instruct:free",
+    defaultModel: "nvidia/nemotron-3.5-lightning:free",
     freeTier: true,
-    freeTierNote: "Free models available with :free suffix. Rate-limited. Availability may change.",
+    freeTierNote: "Models with a :free suffix currently serve at $0 with rate limits. The free catalog changes frequently — verify at openrouter.ai/models?max_price=0.",
     docsUrl: "https://openrouter.ai/docs",
   },
   {
@@ -30,9 +33,9 @@ export const PROVIDERS: ProviderDefinition[] = [
     baseUrl: "https://api.groq.com/openai/v1",
     keyEnvVar: "GROQ_API_KEY",
     adapter: "openai-compatible",
-    defaultModel: "llama-3.3-70b-versatile",
-    freeTier: true,
-    freeTierNote: "Free tier with rate limits (~30 RPM, ~14,400 RPD on developer plan). No credit card required.",
+    defaultModel: "openai/gpt-oss-120b",
+    freeTier: false,
+    freeTierNote: "No free tier currently documented. Llama models are Enterprise-only; the developer plan is usage-based (paid) with rate limits.",
     docsUrl: "https://console.groq.com/docs",
   },
   {
@@ -41,10 +44,10 @@ export const PROVIDERS: ProviderDefinition[] = [
     baseUrl: "https://integrate.api.nvidia.com/v1",
     keyEnvVar: "NVIDIA_API_KEY",
     adapter: "openai-compatible",
-    defaultModel: "nvidia/llama-3.1-nemotron-70b-instruct",
+    defaultModel: "nvidia/nemotron-3.5-lightning-30b-a3b",
     freeTier: true,
-    freeTierNote: "Rate-limited free access on signup. 80+ models available. Limits may change.",
-    docsUrl: "https://build.nvidia.com/docs",
+    freeTierNote: "Free trial credits are currently documented for the NIM API; credit availability and limits may change.",
+    docsUrl: "https://docs.api.nvidia.com/nim/reference/llm-apis",
   },
   {
     id: "gemini",
@@ -54,7 +57,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     adapter: "gemini",
     defaultModel: "gemini-2.5-flash",
     freeTier: true,
-    freeTierNote: "Free tier currently documented with generous limits. See ai.google.dev for current details.",
+    freeTierNote: "A Free usage tier is currently documented (rate-limited per model). Limits vary by model and tier — see ai.google.dev/gemini-api/docs/rate-limits.",
     docsUrl: "https://ai.google.dev/gemini-api/docs",
   },
   {
@@ -63,9 +66,9 @@ export const PROVIDERS: ProviderDefinition[] = [
     baseUrl: "https://api.mistral.ai/v1",
     keyEnvVar: "MISTRAL_API_KEY",
     adapter: "openai-compatible",
-    defaultModel: "ministral-3-8b",
-    freeTier: true,
-    freeTierNote: "Free tier currently documented for smaller models. Check docs.mistral.ai for current availability.",
+    defaultModel: "mistral-small-latest",
+    freeTier: false,
+    freeTierNote: "No free API tier currently documented. Paid plans include monthly API credits; the free consumer plan covers Vibe/Studio, not the API.",
     docsUrl: "https://docs.mistral.ai",
   },
 ];
