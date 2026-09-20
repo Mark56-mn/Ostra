@@ -9,6 +9,8 @@ export interface ActiveProviderInfo {
   modelId: string;
   isConfigured: boolean;
   format: string;
+  keyPresent: boolean;
+  configError: string | null;
 }
 
 /**
@@ -16,19 +18,36 @@ export interface ActiveProviderInfo {
  */
 export function getActiveProviderConfig(): ActiveProviderInfo {
   const config = resolveProviderConfig();
+
+  if (config.configError) {
+    return {
+      id: "error",
+      modelId: "",
+      isConfigured: false,
+      format: "",
+      keyPresent: false,
+      configError: config.configError,
+    };
+  }
+
   if (config.mode === "mock" || !config.provider) {
     return {
       id: "mock",
       modelId: "ostra-mock-1",
       isConfigured: false,
       format: "openai",
+      keyPresent: false,
+      configError: null,
     };
   }
+
   return {
     id: config.provider.id,
     modelId: config.provider.model,
     isConfigured: true,
     format: config.provider.adapter,
+    keyPresent: Boolean(config.provider.apiKey),
+    configError: null,
   };
 }
 
@@ -41,7 +60,9 @@ export interface SystemInfo {
   provider: string;
   model: string;
   endpointConfigured: boolean;
-  apiFormat: string;
+  keyPresent: boolean;
+  adapter: string;
+  configError?: string;
   timestamp: string;
 }
 

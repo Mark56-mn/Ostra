@@ -2,27 +2,44 @@
  * GET /api/health
  *
  * Reports liveness plus a secret-free description of the active provider.
- * API keys are never included — only whether providers are configured.
+ * API keys are never included — only whether providers are configured and keys present.
+ *
+ * Status states:
+ * - ok: provider configured and key present (or mock mode)
+ * - degraded: provider configured but key missing
+ * - error: invalid provider configuration
  */
 import { NextResponse } from "next/server";
 import { noStoreHeaders } from "@/lib/api/errors";
-import { getActiveProviderConfig, type SystemInfo } from "@/lib/system/info";
+import { resolveProviderConfig } from "@/lib/providers";
+import { OSTRA_VERSION } from "@/lib/agent/persona";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(): Promise<NextResponse<SystemInfo>> {
-  const providerConfig = getActiveProviderConfig();
+export async function GET(): Promise<NextResponse> {
+  const config = resolveProviderConfig();
 
-  const payload: SystemInfo = {
-    status: "ok",
+  // Determine status
+  let status: "ok" | "degraded" | "error" = "ok";
+  if (config.configError) {
+    status = "error";
+  } else if (config.mode === "provider" && config.provider && !config.provider.apiKey) {
+    status = "degraded";
+  }
+
+  const provider = config.provider;
+  const payload = {
+    status,
     system: "ostra",
-    version: "0.1.0",
-    mode: providerConfig.isConfigured ? "live" : "unconfigured",
-    provider: providerConfig.id,
-    model: providerConfig.modelId,
-    endpointConfigured: providerConfig.isConfigured,
-    apiFormat: providerConfig.format,
+    version: OSTRA_VERSION,
+    mode: config.mode,
+    provider: provider?.id ?? "mock",
+    model: provider?.model ?? "ostra-mock-1",
+    endpointConfigured: config.mode === "provider" && Boolean(provider?.apiKey),
+    keyPresent: Boolean(provider?.apiKey),
+    adapter: provider?.adapter ?? "openai-compatible",
+    configError: config.configError ?? undefined,
     timestamp: new Date().toISOString(),
   };
 

@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { AppShell } from "@/components/app-shell";
 import { RoadmapPanel } from "@/components/roadmap-panel";
-import { getActiveProviderConfig } from "@/lib/system/info";
-import { getAllProviderStatuses } from "@/lib/providers";
+import { resolveProviderConfig, getAllProviderStatuses } from "@/lib/providers";
 import { getMaxMessageLength } from "@/lib/model/config";
 
 // Read the environment per request so settings always reflect the live deployment.
@@ -14,17 +13,37 @@ export const metadata: Metadata = {
 };
 
 export default function SettingsPage() {
-  const active = getActiveProviderConfig();
+  const config = resolveProviderConfig();
   const allProviders = getAllProviderStatuses();
+  const provider = config.provider;
 
-  const rows: Array<{ label: string; value: string }> = [
+  const hasError = Boolean(config.configError);
+  const isMock = config.mode === "mock" && !provider;
+  const keyMissing = Boolean(config.mode === "provider" && provider && !provider.apiKey);
+
+  const rows: Array<{ label: string; value: string; warn?: boolean }> = [
     {
       label: "Active provider",
-      value: active.isConfigured ? active.id : "mock — simulated replies",
+      value: hasError
+        ? "ERROR — invalid provider"
+        : isMock
+          ? "mock — simulated replies"
+          : provider?.id ?? "unknown",
+      warn: hasError,
     },
-    { label: "Model", value: active.modelId },
-    { label: "API format", value: active.format },
-    { label: "Endpoint", value: active.isConfigured ? "configured (server-side)" : "not set" },
+    { label: "Model", value: provider?.model ?? "ostra-mock-1" },
+    { label: "API format", value: provider?.adapter ?? "openai-compatible" },
+    {
+      label: "API key",
+      value: hasError
+        ? "N/A"
+        : isMock
+          ? "not needed (mock mode)"
+          : provider?.apiKey
+            ? "present (server-side)"
+            : "MISSING — provider will fail",
+      warn: keyMissing,
+    },
     { label: "Max message length", value: `${getMaxMessageLength()} characters` },
   ];
 
@@ -33,7 +52,7 @@ export default function SettingsPage() {
       <RoadmapPanel
         eyebrow="Module 04 · Control"
         title="Settings"
-        summary="Model configuration is environment-driven in v0.2: no secrets can be typed into this UI, listed in the repository, or read by the browser. This view reports what the server resolved from its environment."
+        summary="Model configuration is environment-driven: no secrets can be typed into this UI, listed in the repository, or read by the browser. This view reports what the server resolved from its environment."
         working={[
           "Multi-provider gateway: OpenRouter, NVIDIA NIM, Gemini, Groq, Mistral",
           "Environment-based provider switching — no code changes needed",
@@ -47,6 +66,29 @@ export default function SettingsPage() {
           "Telegram interface binding and notification routing",
         ]}
       >
+        {/* Config error banner */}
+        {hasError && (
+          <div className="mx-5 mt-5 rounded-xl border border-red-500/30 bg-red-500/10 p-4 sm:mx-6">
+            <p className="text-[13px] font-medium text-red-400">Configuration error</p>
+            <p className="mt-1 font-mono text-[12px] text-red-300/80">{config.configError}</p>
+            <p className="mt-2 text-[12px] text-zinc-500">
+              Fix the AI_PROVIDER environment variable and redeploy.
+            </p>
+          </div>
+        )}
+
+        {/* Key missing warning */}
+        {keyMissing && (
+          <div className="mx-5 mt-5 rounded-xl border border-ember-400/30 bg-ember-500/10 p-4 sm:mx-6">
+            <p className="text-[13px] font-medium text-ember-400">API key missing</p>
+            <p className="mt-1 text-[12px] text-zinc-400">
+              Provider <code className="text-zinc-300">{provider?.id}</code> is configured but no API key was found.
+              Set <code className="text-zinc-300">{provider?.id.toUpperCase()}_API_KEY</code> or{" "}
+              <code className="text-zinc-300">AI_API_KEY</code> in your environment.
+            </p>
+          </div>
+        )}
+
         <section className="ostra-panel p-5 sm:p-6">
           <h2 className="text-sm font-medium text-zinc-200">Active provider</h2>
           <p className="mt-2 text-[13px] leading-relaxed text-zinc-400">
@@ -58,7 +100,13 @@ export default function SettingsPage() {
             {rows.map((row) => (
               <div key={row.label} className="flex items-baseline justify-between gap-4 py-2.5">
                 <dt className="text-[13px] text-zinc-400">{row.label}</dt>
-                <dd className="break-all text-right font-mono text-[12px] text-zinc-200">{row.value}</dd>
+                <dd
+                  className={`break-all text-right font-mono text-[12px] ${
+                    row.warn ? "text-red-400" : "text-zinc-200"
+                  }`}
+                >
+                  {row.value}
+                </dd>
               </div>
             ))}
           </dl>
@@ -68,7 +116,7 @@ export default function SettingsPage() {
           <h2 className="text-sm font-medium text-zinc-200">Available providers</h2>
           <p className="mt-2 text-[13px] leading-relaxed text-zinc-400">
             Set <code className="text-signal-400">AI_PROVIDER</code> in your environment to switch.
-            Free tiers may change — verify current status before depending on one.
+            Free tiers and availability may change — verify current status at each provider&apos;s documentation.
           </p>
 
           <dl className="mt-4 divide-y divide-white/[0.06] border-t border-white/[0.06]">
@@ -79,6 +127,11 @@ export default function SettingsPage() {
                   {p.configured && (
                     <span className="ml-2 inline-block rounded-full bg-signal-700/30 px-2 py-0.5 text-[11px] font-medium text-signal-400">
                       active
+                    </span>
+                  )}
+                  {p.configured && !p.keyPresent && (
+                    <span className="ml-2 inline-block rounded-full bg-ember-500/20 px-2 py-0.5 text-[11px] font-medium text-ember-400">
+                      no key
                     </span>
                   )}
                 </dt>
@@ -97,12 +150,12 @@ export default function SettingsPage() {
           <p className="ostra-label">Quick-start environment variables</p>
           <pre className="mt-3 overflow-x-auto font-mono text-[11px] leading-relaxed text-zinc-400">
             {`# Pick one provider and set its key
-AI_PROVIDER=openrouter
-OPENROUTER_API_KEY=your-key
-
-# Or try Groq (fast, generous free tier)
 AI_PROVIDER=groq
 GROQ_API_KEY=your-key
+
+# Or OpenRouter (free models with :free suffix)
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=your-key
 
 # Or legacy custom endpoint
 MODEL_MODE=http

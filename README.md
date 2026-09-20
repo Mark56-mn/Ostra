@@ -58,13 +58,15 @@ Browser → POST /api/chat → Agent Runtime → Provider Gateway → Provider A
 
 | Provider | API Format | Free Tier | Key Env Var | Notes |
 | --- | --- | --- | --- | --- |
-| **OpenRouter** | OpenAI-compatible | `:free` model suffix | `OPENROUTER_API_KEY` | Largest free model catalog |
-| **Groq** | OpenAI-compatible | Rate-limited free | `GROQ_API_KEY` | Fastest inference, generous limits |
-| **Mistral** | OpenAI-compatible | Free tier available | `MISTRAL_API_KEY` | European provider, good quality |
-| **NVIDIA NIM** | OpenAI-compatible | Free credits | `NVIDIA_API_KEY` | Nemotron models, enterprise-grade |
-| **Google Gemini** | Gemini-native | Free tier | `GEMINI_API_KEY` | Uses REST API directly |
+| **OpenRouter** | OpenAI-compatible | `:free` model suffix (rate-limited) | `OPENROUTER_API_KEY` | Free models available, availability may change |
+| **Groq** | OpenAI-compatible | Rate-limited free (~30 RPM) | `GROQ_API_KEY` | No credit card required, limits may change |
+| **Mistral** | OpenAI-compatible | Free tier currently documented | `MISTRAL_API_KEY` | Smaller models, check docs.mistral.ai |
+| **NVIDIA NIM** | OpenAI-compatible | Rate-limited free access | `NVIDIA_API_KEY` | 80+ models, limits may change |
+| **Google Gemini** | Gemini-native | Free tier currently documented | `GEMINI_API_KEY` | Generous limits, see ai.google.dev |
 | **Custom** | OpenAI-compatible | — | `AI_API_KEY` | Any OpenAI-compatible endpoint |
 | **Mock** | Built-in | Always free | none | Simulated replies for development |
+
+> Free tiers and model availability change. Verify current status at each provider's documentation.
 
 > Free tiers and model availability change. Do not present any provider as permanently free.
 > Verify current status at each provider's documentation before depending on a free tier.
@@ -100,11 +102,11 @@ Each provider has a sensible default model. Override with `AI_MODEL`:
 
 | Provider | Default Model |
 | --- | --- |
-| OpenRouter | `google/gemma-3-1b-it:free` |
-| Groq | `llama-3.1-8b-instant` |
-| Mistral | `mistral-small-latest` |
+| OpenRouter | `meta-llama/llama-3.3-70b-instruct:free` |
+| Groq | `llama-3.3-70b-versatile` |
+| Mistral | `ministral-3-8b` |
 | NVIDIA | `nvidia/llama-3.1-nemotron-70b-instruct` |
-| Gemini | `gemini-2.0-flash` |
+| Gemini | `gemini-2.5-flash` |
 
 ### Legacy compatibility
 

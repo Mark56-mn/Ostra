@@ -6,6 +6,9 @@
  *   2. The gateway picks it up automatically via AI_PROVIDER env var
  *
  * No frontend, route or runtime code changes needed.
+ *
+ * Free-tier notes must be factual and qualified — availability and limits may change.
+ * See each provider's current documentation before making claims.
  */
 import type { ProviderDefinition } from "./types";
 
@@ -18,7 +21,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     adapter: "openai-compatible",
     defaultModel: "meta-llama/llama-3.3-70b-instruct:free",
     freeTier: true,
-    freeTierNote: "Free models available with :free suffix. Rate-limited.",
+    freeTierNote: "Free models available with :free suffix. Rate-limited. Availability may change.",
     docsUrl: "https://openrouter.ai/docs",
   },
   {
@@ -29,7 +32,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     adapter: "openai-compatible",
     defaultModel: "llama-3.3-70b-versatile",
     freeTier: true,
-    freeTierNote: "Free tier with rate limits (30 RPM on developer plan).",
+    freeTierNote: "Free tier with rate limits (~30 RPM, ~14,400 RPD on developer plan). No credit card required.",
     docsUrl: "https://console.groq.com/docs",
   },
   {
@@ -40,7 +43,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     adapter: "openai-compatible",
     defaultModel: "nvidia/llama-3.1-nemotron-70b-instruct",
     freeTier: true,
-    freeTierNote: "Free credits on signup. Check build.nvidia.com for current models.",
+    freeTierNote: "Rate-limited free access on signup. 80+ models available. Limits may change.",
     docsUrl: "https://build.nvidia.com/docs",
   },
   {
@@ -51,7 +54,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     adapter: "gemini",
     defaultModel: "gemini-2.5-flash",
     freeTier: true,
-    freeTierNote: "Free tier with generous limits. See ai.google.dev for details.",
+    freeTierNote: "Free tier currently documented with generous limits. See ai.google.dev for current details.",
     docsUrl: "https://ai.google.dev/gemini-api/docs",
   },
   {
@@ -60,9 +63,9 @@ export const PROVIDERS: ProviderDefinition[] = [
     baseUrl: "https://api.mistral.ai/v1",
     keyEnvVar: "MISTRAL_API_KEY",
     adapter: "openai-compatible",
-    defaultModel: "mistral-small-latest",
+    defaultModel: "ministral-3-8b",
     freeTier: true,
-    freeTierNote: "Free tier available for smaller models. Check docs.mistral.ai.",
+    freeTierNote: "Free tier currently documented for smaller models. Check docs.mistral.ai for current availability.",
     docsUrl: "https://docs.mistral.ai",
   },
 ];

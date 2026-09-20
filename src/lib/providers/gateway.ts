@@ -27,6 +27,14 @@ export async function callProvider(
 ): Promise<GenerateResult> {
   const config = resolveProviderConfig();
 
+  // Invalid provider configuration — fail with clear error
+  if (config.configError) {
+    throw new ModelProviderError(config.configError, {
+      code: "model_misconfigured",
+      provider: "unknown",
+    });
+  }
+
   if (config.mode === "mock" || !config.provider) {
     return callMock(messages, options);
   }

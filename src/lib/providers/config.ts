@@ -3,10 +3,12 @@
  *
  * Reads AI_PROVIDER, AI_MODEL, AI_API_KEY, AI_BASE_URL and per-provider
  * key env vars to resolve the active provider. Falls back to mock mode
- * when no provider is configured or no key is available.
+ * only when no provider is configured at all.
  *
  * Backward compatibility: if the legacy MODEL_MODE=http + MODEL_API_URL
  * vars are set, they are treated as a custom OpenAI-compatible provider.
+ *
+ * Invalid AI_PROVIDER values produce a clear error, NOT silent mock mode.
  */
 import { getProviderDefinition, PROVIDERS } from "./registry";
 import type { ProviderHealthStatus, ResolvedProvider } from "./types";
@@ -35,6 +37,8 @@ export interface ProviderConfig {
   /** Legacy: raw MODEL_API_URL when using backward-compat custom endpoint. */
   legacyApiUrl: string | null;
   legacyApiKey: string | null;
+  /** Set when AI_PROVIDER is an invalid/unrecognized value. */
+  configError: string | null;
 }
 
 let cached: ProviderConfig | null = null;
@@ -45,7 +49,9 @@ let cached: ProviderConfig | null = null;
  * Priority:
  * 1. AI_PROVIDER + AI_MODEL (new system)
  * 2. MODEL_MODE=http + MODEL_API_URL (legacy backward compat)
- * 3. No provider → mock mode
+ * 3. No provider configured → mock mode
+ *
+ * If AI_PROVIDER is set to an invalid value, returns a configError.
  */
 export function resolveProviderConfig(): ProviderConfig {
   if (cached) return cached;
@@ -54,29 +60,40 @@ export function resolveProviderConfig(): ProviderConfig {
   const providerId = readEnv("AI_PROVIDER");
   if (providerId) {
     const definition = getProviderDefinition(providerId);
-    if (definition) {
-      const apiKey = readEnv("AI_API_KEY") ?? readEnv(definition.keyEnvVar);
-      const model = readEnv("AI_MODEL") ?? definition.defaultModel;
-      const baseUrl = readEnv("AI_BASE_URL") ?? definition.baseUrl;
-
+    if (!definition) {
+      const validIds = PROVIDERS.map((p) => p.id).join(", ");
       cached = {
-        mode: "provider",
-        provider: {
-          id: definition.id,
-          name: definition.name,
-          baseUrl,
-          apiKey,
-          model,
-          adapter: definition.adapter,
-          timeoutMs: readEnvInt("MODEL_TIMEOUT_MS", 60_000, 5_000, 300_000),
-          maxTokens: readEnvInt("MODEL_MAX_TOKENS", 1024, 64, 32_000),
-          temperature: readTemperature(),
-        },
+        mode: "mock",
+        provider: null,
         legacyApiUrl: null,
         legacyApiKey: null,
+        configError: `Invalid AI_PROVIDER="${providerId}". Valid values: ${validIds}`,
       };
       return cached;
     }
+
+    const apiKey = readEnv("AI_API_KEY") ?? readEnv(definition.keyEnvVar);
+    const model = readEnv("AI_MODEL") ?? definition.defaultModel;
+    const baseUrl = readEnv("AI_BASE_URL") ?? definition.baseUrl;
+
+    cached = {
+      mode: "provider",
+      provider: {
+        id: definition.id,
+        name: definition.name,
+        baseUrl,
+        apiKey,
+        model,
+        adapter: definition.adapter,
+        timeoutMs: readEnvInt("MODEL_TIMEOUT_MS", 60_000, 5_000, 300_000),
+        maxTokens: readEnvInt("MODEL_MAX_TOKENS", 1024, 64, 32_000),
+        temperature: readTemperature(),
+      },
+      legacyApiUrl: null,
+      legacyApiKey: null,
+      configError: null,
+    };
+    return cached;
   }
 
   // --- Legacy backward compatibility: MODEL_MODE + MODEL_API_URL ---
@@ -101,6 +118,7 @@ export function resolveProviderConfig(): ProviderConfig {
       },
       legacyApiUrl,
       legacyApiKey,
+      configError: null,
     };
     return cached;
   }
@@ -111,6 +129,7 @@ export function resolveProviderConfig(): ProviderConfig {
     provider: null,
     legacyApiUrl: null,
     legacyApiKey: null,
+    configError: null,
   };
   return cached;
 }
@@ -123,7 +142,7 @@ function readTemperature(): number {
   return Math.min(2, Math.max(0, Math.round(parsed * 100) / 100));
 }
 
-/** Clear the memoised config (for tests). */
+/** Clear the memoised config (for tests or env changes). */
 export function resetProviderConfig(): void {
   cached = null;
 }
@@ -131,6 +150,24 @@ export function resetProviderConfig(): void {
 /** Safe, secret-free health status for the browser. */
 export function getProviderHealthStatus(): ProviderHealthStatus {
   const config = resolveProviderConfig();
+
+  // Invalid provider configuration
+  if (config.configError) {
+    return {
+      id: "error",
+      name: "Configuration Error",
+      provider: "error",
+      model: "",
+      configured: false,
+      keyPresent: false,
+      adapter: "openai-compatible",
+      freeTier: false,
+      freeTierNote: config.configError,
+      docsUrl: "",
+    };
+  }
+
+  // Mock mode (no provider configured, or explicitly mock)
   if (config.mode === "mock" || !config.provider) {
     return {
       id: "mock",
@@ -145,6 +182,8 @@ export function getProviderHealthStatus(): ProviderHealthStatus {
       docsUrl: "",
     };
   }
+
+  // Provider configured — distinguish key-present from key-missing
   const definition = getProviderDefinition(config.provider.id);
   return {
     id: config.provider.id,
