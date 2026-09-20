@@ -777,3 +777,139 @@ The repository/task documentation must make the following unambiguous:
 6. Infrastructure-specific implementations must be isolated behind interfaces/adapters where practical.
 7. The model/provider gateway remains independent of whether execution happens on Cloudflare or VPS.
 8. The current Stage 1 provider verification task remains unchanged in priority.
+
+
+## 27. Parallel execution rule — FINISH STAGE 1 AND BUILD STAGE 2 IN PARALLEL
+
+The coding agent must now work on **Stage 1 completion and Stage 2 implementation in parallel**.
+
+Do NOT interpret the Stage 1 completion gate as a reason to wait idle before writing Stage 2 code. Stage 1 and Stage 2 are now two parallel workstreams, with a strict dependency boundary:
+
+### Workstream A — Finish Stage 1
+
+Continue and complete the required Stage 1 verification/fix gate:
+
+- Verify OpenRouter, Groq, Mistral, NVIDIA NIM/API and Gemini against their current official documentation.
+- Correct stale, retired or invalid model IDs.
+- Verify provider base URLs, authentication, request/response formats and free-tier/credit status.
+- Run typecheck, lint and production build.
+- Run provider routing, request construction, response parsing, missing-key, invalid-provider, timeout/error, health secret-leak and mock-mode tests.
+- Perform at least two real provider calls when valid credentials are available.
+- Never fake real-provider success when credentials are unavailable.
+- Fix implementation-caused failures.
+- Keep Stage 1 marked incomplete until every required gate is actually satisfied.
+- Produce the required Stage 1 verification report with exact tested model IDs and real-provider results.
+
+### Workstream B — Build Stage 2 at the same time
+
+While Workstream A is being verified, implement the Stage 2 **Model Control Center** on a separate code path/feature boundary.
+
+Stage 2 must include:
+
+1. **Server-controlled provider/model catalog**
+   - Define a clean allowlisted catalog/configuration structure.
+   - Providers/models shown to the browser must come from server-controlled configuration.
+   - Never expose API keys, secrets or internal credentials.
+   - Do not create a giant hard-coded catalogue.
+   - Keep model IDs configurable so current models can be changed without rewriting the UI.
+
+2. **Active/default model**
+   - Show the currently configured provider and model.
+   - Support a server-defined default model.
+   - Make the selection state explicit and safe.
+
+3. **Deliberate single-model selection**
+   - User can choose exactly one configured provider/model for a task.
+   - Selection must be validated server-side against the allowlist.
+   - The browser must not be trusted to select arbitrary provider URLs or arbitrary models.
+
+4. **Deliberate multi-model selection**
+   - User can deliberately select multiple configured models for one task.
+   - Multiple models must be represented as explicit task configuration.
+   - Do NOT automatically run models in parallel merely because multiple models are selected.
+   - Do NOT silently multiply provider usage/cost.
+   - The execution semantics can remain sequential/deferred until the future task queue/agent runtime is implemented.
+
+5. **Model roles**
+   - Support optional roles such as:
+     - planner
+     - coder
+     - reviewer
+     - executor
+   - Roles are metadata/configuration only at this stage unless the existing runtime can safely support them.
+   - Do not pretend that a role is actually executing a separate autonomous workflow if that runtime does not exist yet.
+
+6. **Task configuration**
+   - Create a typed Stage 2 task configuration/schema containing, at minimum:
+     - task/instruction
+     - selected model(s)
+     - optional roles
+   - Keep the schema extensible for the future persistent task queue.
+   - Do not build the persistent queue, scheduler or autonomous loop in Stage 2.
+
+7. **Website UI**
+   - Add a real Model Control Center to Ostra.
+   - It should work well on Android/mobile and desktop.
+   - Show provider, model, availability/configuration state and selection controls.
+   - Make it obvious which model is currently selected/default.
+   - Do not display secrets.
+   - Keep the UI lightweight and consistent with existing Ostra design.
+
+8. **API boundary**
+   - Add a safe server endpoint or server action for reading the allowlisted catalog.
+   - Add a safe server endpoint or action for validating/saving task model selections where appropriate.
+   - Reject arbitrary provider/model combinations.
+   - Never accept a client-supplied upstream URL or API key.
+   - Preserve the existing /api/chat architecture.
+
+9. **Persistence boundary**
+   - Stage 2 may persist model/task selection only in the existing safe mechanism or a minimal server-safe representation if already available.
+   - Do NOT introduce a full persistent database/queue yet.
+   - Clearly isolate the persistence seam so Stage 3 can replace it with persistent task storage.
+
+10. **Testing**
+   - Add tests for:
+     - catalog generation
+     - hidden secrets
+     - valid single-model selection
+     - valid multi-model selection
+     - invalid provider rejection
+     - invalid model rejection
+     - role validation
+     - safe task configuration parsing
+   - Keep Stage 1 provider tests intact.
+
+### Parallelization constraints
+
+- Do not rewrite the existing Stage 1 provider gateway merely to build Stage 2.
+- Do not make Stage 2 dependent on a real provider API call just to render the catalog.
+- Do not block Stage 2 UI work on obtaining API credentials.
+- Do not start Stage 3 persistent queue, Stage 4 autonomy, or broad Cloudflare infrastructure as part of this parallel task.
+- Keep Stage 2 model selection/configuration separate from actual autonomous execution.
+- If Stage 1 verification discovers a provider problem, fix it without breaking the Stage 2 interfaces.
+- If Stage 2 reveals an abstraction problem, improve the shared abstraction cleanly rather than duplicating provider logic.
+- Run the full test/build suite after both workstreams are implemented.
+
+### Final completion report
+
+The coding agent must report the two workstreams separately:
+
+**Stage 1**
+- providers verified
+- exact model IDs verified/tested
+- real provider calls that succeeded
+- tests/checks passed
+- remaining manual credentials/tests
+- whether Stage 1 is complete
+
+**Stage 2**
+- files/features implemented
+- catalog design
+- single/multi-model selection behavior
+- role support
+- task schema
+- API/security validation
+- tests passed
+- what remains for Stage 3
+
+The agent must not claim Stage 1 complete merely because the Stage 2 implementation is complete. Each stage has its own completion status.
