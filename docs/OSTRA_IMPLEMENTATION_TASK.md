@@ -616,3 +616,164 @@ Only after the Stage 1 completion gate passes, begin Stage 2: Model Control Cent
 Stage 2 requirements: server-controlled allowlisted provider/model catalog; active/default model; deliberate selection of one model for a task; deliberate selection of multiple models for a task; optional planner/coder/reviewer/executor roles; no API keys in the browser; no uncontrolled automatic parallel model spending; and task model selections persisted as part of future task configuration.
 
 Do not implement the persistent queue or autonomous execution loop during the Stage 1 verification pass.
+
+## 26. Cloudflare as the current VPS alternative — REQUIRED ARCHITECTURE RULE
+
+Cloudflare is now the **current infrastructure alternative to the VPS**, but it must NOT replace, delete, or invalidate the existing VPS architecture.
+
+### Core requirement
+
+Keep the current Ostra architecture and roadmap intact.
+
+Do NOT redesign Ostra into a Cloudflare-only system.
+
+Instead, add Cloudflare as an infrastructure/runtime option that Ostra can use now because a VPS has not yet been acquired.
+
+The long-term architecture must support:
+
+- Cloudflare without a VPS.
+- VPS without Cloudflare where appropriate.
+- Cloudflare and VPS running together.
+- Moving workloads between Cloudflare and VPS without rewriting the Ostra agent architecture.
+
+### Current deployment direction
+
+For the current implementation, prefer:
+
+Ostra Website (Vercel)
+        |
+        v
+Cloudflare backend/runtime
+        |
+        +--> Workers
+        +--> D1
+        +--> Queues
+        +--> Workflows
+        +--> Durable Objects where useful
+        |
+        v
+Ostra Agent Runtime
+        |
+        v
+Model Gateway
+        |
+        +--> OpenRouter
+        +--> NVIDIA
+        +--> Gemini
+        +--> Groq
+        +--> Mistral
+
+This is the **current infrastructure choice**, not a permanent architectural lock-in.
+
+### VPS architecture must remain
+
+Preserve the existing future VPS path:
+
+Ostra Website (Vercel)
+        |
+        v
+API / Control Plane
+        |
+        v
+Persistent DB / Queue
+        |
+        v
+Ostra Worker
+        |
+        +--> Model Gateway
+        +--> Tools
+        +--> Memory
+        +--> Heavy/long-running compute
+
+The VPS path must remain documented and architecturally possible even while Cloudflare is being used.
+
+### Future combined architecture
+
+When a VPS becomes available, Ostra should be able to use both:
+
+Vercel
+  |
+  v
+Cloudflare control plane
+  |
+  +--> D1 / state
+  +--> Queues
+  +--> Workflows
+  +--> authentication/API/routing
+  |
+  +--------------------+
+                       |
+                       v
+                Ostra execution
+                 /            \
+                /              \
+       Cloudflare runtime     VPS worker
+                |              |
+          lightweight       heavy/
+          workloads         long-running
+                            workloads
+
+Do not assume every task must execute on Cloudflare or every task must execute on the VPS.
+
+The future runtime should be able to route a task to the appropriate execution environment.
+
+### Infrastructure abstraction requirement
+
+Do not hard-code the Agent Runtime, task system, memory, tools or scheduler directly to VPS-specific processes.
+
+Likewise, do not hard-code them directly to Cloudflare-specific APIs in a way that makes a VPS impossible later.
+
+Where infrastructure-specific code is necessary, isolate it behind clean interfaces/adapters.
+
+Conceptually:
+
+Agent Runtime
+    |
+    +--> Runtime/Execution Interface
+            |
+            +--> Cloudflare adapter
+            |
+            +--> VPS adapter
+            |
+            +--> future compute adapter
+
+The model gateway remains independent of the execution infrastructure.
+
+### Cloudflare components
+
+When Cloudflare infrastructure is implemented in future stages, use the appropriate Cloudflare service for the job rather than recreating VPS behavior unnecessarily:
+
+- Workers: API/control-plane and lightweight server-side execution.
+- D1: persistent relational application/task data where appropriate.
+- Queues: asynchronous task/event delivery, not the permanent source of truth.
+- Workflows: durable multi-step task execution, retries, waiting and resumable workflows.
+- Durable Objects: coordination, live state, locking or real-time/session state where appropriate.
+- R2: large files/artifacts when needed.
+- Cron Triggers or appropriate scheduling facilities: scheduled work where needed.
+
+Do not implement all Cloudflare infrastructure during Stage 1.
+
+### Important scope rule
+
+Stage 1 remains the current priority.
+
+Do not pause or replace the Stage 1 provider verification work in order to build Cloudflare infrastructure now.
+
+Cloudflare becomes the planned infrastructure target for the later queue/autonomy/runtime stages.
+
+Stage 2 remains the Model Control Center.
+
+Cloudflare infrastructure should be introduced in the appropriate later stage, while preserving the VPS path.
+
+### Definition of success for this architecture change
+
+The repository/task documentation must make the following unambiguous:
+
+1. We are NOT buying or requiring a VPS now.
+2. Cloudflare is the current VPS alternative.
+3. The existing VPS architecture remains part of Ostra.
+4. Cloudflare must not be treated as a permanent lock-in.
+5. When a VPS becomes available, Ostra can use Cloudflare + VPS together.
+6. Infrastructure-specific implementations must be isolated behind interfaces/adapters where practical.
+7. The model/provider gateway remains independent of whether execution happens on Cloudflare or VPS.
+8. The current Stage 1 provider verification task remains unchanged in priority.
