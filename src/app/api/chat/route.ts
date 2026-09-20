@@ -1,18 +1,16 @@
 /**
  * POST /api/chat — the only door between the browser and the model.
  *
- * Flow: validate → rate limit → agent runtime → ModelProvider → safe response.
+ * Flow: validate → rate limit → agent runtime → provider gateway → safe response.
  * Everything upstream of `getAgentRuntime()` happens server-side, so
- * MODEL_API_URL, MODEL_API_KEY and any other server env var stay hidden.
+ * API keys and any other server env var stay hidden.
  */
 import { NextResponse } from "next/server";
 import { getAgentRuntime } from "@/lib/agent/runtime";
 import { jsonError, logServerError, noStoreHeaders } from "@/lib/api/errors";
 import { getClientKey, getRateLimiter } from "@/lib/api/rate-limit";
 import { parseChatRequest } from "@/lib/api/validation";
-import { describeModelTarget, ModelProviderError } from "@/lib/model";
-import { getMaxMessageLength } from "@/lib/model/config";
-import type { ChatApiSuccess } from "@/lib/system/info";
+import { getActiveProviderConfig, type ChatApiSuccess } from "@/lib/system/info";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,7 +59,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const { message, conversationId, history } = validation.value;
-  const target = describeModelTarget();
+  const providerConfig = getActiveProviderConfig();
 
   try {
     const result = await getAgentRuntime().respond({
@@ -76,13 +74,17 @@ export async function POST(request: Request): Promise<NextResponse> {
       conversationId,
       model: result.model,
       provider: result.provider,
-      mode: result.provider === "http" ? "http" : "mock",
+      mode: result.provider === "mock" ? "mock" : "live",
       latencyMs: result.latencyMs,
     };
 
     return NextResponse.json(payload, { headers: noStoreHeaders() });
   } catch (error) {
-    return modelFailure(error, { requestId, mode: target.mode, maxLength: getMaxMessageLength() });
+    return modelFailure(error, {
+      requestId,
+      provider: providerConfig.id,
+      model: providerConfig.modelId,
+    });
   }
 }
 
@@ -93,43 +95,49 @@ export async function GET(): Promise<NextResponse> {
 /** Maps provider failures to safe client-facing errors. */
 function modelFailure(
   error: unknown,
-  context: { requestId: string; mode: string; maxLength: number },
+  context: { requestId: string; provider: string; model: string },
 ): NextResponse {
-  if (error instanceof ModelProviderError) {
-    logServerError("chat", error);
+  logServerError("chat", error);
 
-    switch (error.code) {
-      case "model_misconfigured":
-        return jsonError(
-          503,
-          "model_not_configured",
-          "The model endpoint is not configured on the server (MODEL_MODE / MODEL_API_URL).",
-          context.requestId,
-        );
-      case "model_timeout":
-        return jsonError(504, "model_timeout", "The model endpoint did not answer in time.", context.requestId);
-      case "model_cancelled":
-        return jsonError(499, "request_cancelled", "The request was cancelled.", context.requestId);
-      case "model_empty_response":
-        return jsonError(
-          502,
-          "model_empty_response",
-          "The model endpoint returned an empty response.",
-          context.requestId,
-        );
-      case "model_http_error":
-        return jsonError(
-          502,
-          "model_unavailable",
-          `The model endpoint responded with an error${typeof error.status === "number" ? ` (HTTP ${error.status})` : ""}.`,
-          context.requestId,
-        );
-      default:
-        return jsonError(502, "model_unavailable", "Ostra could not reach the model endpoint.", context.requestId);
+  if (error instanceof Error) {
+    const msg = error.message;
+
+    if (msg.includes("not configured") || msg.includes("missing")) {
+      return jsonError(
+        503,
+        "model_not_configured",
+        "The model provider is not configured on the server. Check Ostra environment variables.",
+        context.requestId,
+      );
+    }
+
+    if (msg.includes("timeout") || msg.includes("abort")) {
+      return jsonError(504, "model_timeout", "The model endpoint did not answer in time.", context.requestId);
+    }
+
+    if (msg.includes("cancelled")) {
+      return jsonError(499, "request_cancelled", "The request was cancelled.", context.requestId);
+    }
+
+    if (msg.includes("empty") || msg.includes("No content")) {
+      return jsonError(
+        502,
+        "model_empty_response",
+        "The model endpoint returned an empty response.",
+        context.requestId,
+      );
+    }
+
+    if (msg.includes("HTTP") || msg.includes("status")) {
+      return jsonError(
+        502,
+        "model_unavailable",
+        `The model endpoint responded with an error.`,
+        context.requestId,
+      );
     }
   }
 
-  logServerError("chat", error);
   return jsonError(500, "internal_error", "Ostra hit an internal error while generating a reply.", context.requestId);
 }
 

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { AppShell } from "@/components/app-shell";
 import { RoadmapPanel } from "@/components/roadmap-panel";
-import { describeModelTarget, getModelConfig } from "@/lib/model";
+import { getActiveProviderConfig } from "@/lib/system/info";
+import { getAllProviderStatuses } from "@/lib/providers";
 import { getMaxMessageLength } from "@/lib/model/config";
 
 // Read the environment per request so settings always reflect the live deployment.
@@ -13,19 +14,17 @@ export const metadata: Metadata = {
 };
 
 export default function SettingsPage() {
-  const config = getModelConfig();
-  const target = describeModelTarget(config);
+  const active = getActiveProviderConfig();
+  const allProviders = getAllProviderStatuses();
 
   const rows: Array<{ label: string; value: string }> = [
     {
-      label: "Provider mode",
-      value: target.mode === "mock" ? "mock — simulated replies" : "http — live model endpoint",
+      label: "Active provider",
+      value: active.isConfigured ? active.id : "mock — simulated replies",
     },
-    { label: "Model name", value: target.model },
-    { label: "Endpoint URL", value: target.endpointConfigured ? "configured (server-side)" : "not set" },
-    { label: "Endpoint key", value: config.apiKey ? "configured (server-side)" : "not set" },
-    { label: "Request format", value: target.apiFormat },
-    { label: "Request timeout", value: `${Math.round(config.timeoutMs / 1000)} s` },
+    { label: "Model", value: active.modelId },
+    { label: "API format", value: active.format },
+    { label: "Endpoint", value: active.isConfigured ? "configured (server-side)" : "not set" },
     { label: "Max message length", value: `${getMaxMessageLength()} characters` },
   ];
 
@@ -34,11 +33,12 @@ export default function SettingsPage() {
       <RoadmapPanel
         eyebrow="Module 04 · Control"
         title="Settings"
-        summary="Model configuration is intentionally environment-driven in v0: no secrets can be typed into this UI, listed in the repository or read by the browser. This view reports what the server resolved from its environment."
+        summary="Model configuration is environment-driven in v0.2: no secrets can be typed into this UI, listed in the repository, or read by the browser. This view reports what the server resolved from its environment."
         working={[
-          "Model provider, model name and request format are configurable",
+          "Multi-provider gateway: OpenRouter, NVIDIA NIM, Gemini, Groq, Mistral",
+          "Environment-based provider switching — no code changes needed",
           "Credentials stay in server environment variables",
-          "Changing the model is a configuration change, not a code change",
+          "Legacy MODEL_MODE / MODEL_API_URL backward compatibility",
         ]}
         planned={[
           "Editing provider settings from the interface",
@@ -48,7 +48,7 @@ export default function SettingsPage() {
         ]}
       >
         <section className="ostra-panel p-5 sm:p-6">
-          <h2 className="text-sm font-medium text-zinc-200">Resolved model link</h2>
+          <h2 className="text-sm font-medium text-zinc-200">Active provider</h2>
           <p className="mt-2 text-[13px] leading-relaxed text-zinc-400">
             Read on the server for every request. Only presence is shown for credentials — values are never sent to
             the browser, logged, or stored in conversation history.
@@ -62,21 +62,57 @@ export default function SettingsPage() {
               </div>
             ))}
           </dl>
+        </section>
 
-          <div className="mt-5 rounded-xl border border-white/[0.06] bg-void-950/60 p-4">
-            <p className="ostra-label">Environment variables</p>
-            <pre className="mt-3 overflow-x-auto font-mono text-[11px] leading-relaxed text-zinc-400">
-              {`MODEL_MODE=mock
-MODEL_API_URL=
-MODEL_API_KEY=
-MODEL_NAME=ostra-experimental`}
-            </pre>
-            <p className="mt-3 text-[12px] leading-relaxed text-zinc-500">
-              Set these in the hosting environment (for Vercel: Settings → Environment Variables) and redeploy.
-              MODEL_MODE=http routes every reply through MODEL_API_URL; MODEL_MODE=mock keeps the simulated
-              provider.
-            </p>
-          </div>
+        <section className="ostra-panel p-5 sm:p-6">
+          <h2 className="text-sm font-medium text-zinc-200">Available providers</h2>
+          <p className="mt-2 text-[13px] leading-relaxed text-zinc-400">
+            Set <code className="text-signal-400">AI_PROVIDER</code> in your environment to switch.
+            Free tiers may change — verify current status before depending on one.
+          </p>
+
+          <dl className="mt-4 divide-y divide-white/[0.06] border-t border-white/[0.06]">
+            {allProviders.map((p) => (
+              <div key={p.id} className="flex items-baseline justify-between gap-4 py-2.5">
+                <dt className="text-[13px] text-zinc-400">
+                  {p.name}
+                  {p.configured && (
+                    <span className="ml-2 inline-block rounded-full bg-signal-700/30 px-2 py-0.5 text-[11px] font-medium text-signal-400">
+                      active
+                    </span>
+                  )}
+                </dt>
+                <dd className="flex flex-col items-end gap-1">
+                  <span className="font-mono text-[12px] text-zinc-200">{p.model}</span>
+                  <span className="text-[11px] text-zinc-500">
+                    {p.freeTier ? p.freeTierNote : "paid"}
+                  </span>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+
+        <section className="ostra-panel p-5 sm:p-6">
+          <p className="ostra-label">Quick-start environment variables</p>
+          <pre className="mt-3 overflow-x-auto font-mono text-[11px] leading-relaxed text-zinc-400">
+            {`# Pick one provider and set its key
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=your-key
+
+# Or try Groq (fast, generous free tier)
+AI_PROVIDER=groq
+GROQ_API_KEY=your-key
+
+# Or legacy custom endpoint
+MODEL_MODE=http
+MODEL_API_URL=https://your-endpoint/v1/chat/completions
+MODEL_API_KEY=your-key`}
+          </pre>
+          <p className="mt-3 text-[12px] leading-relaxed text-zinc-500">
+            Set these in the hosting environment (for Vercel: Settings → Environment Variables) and redeploy.
+            Changing the model is a configuration change, not a code change.
+          </p>
         </section>
       </RoadmapPanel>
     </AppShell>

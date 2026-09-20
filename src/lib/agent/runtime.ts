@@ -14,7 +14,8 @@
  * objects, so it can be driven from an HTTP route today and from a scheduler
  * or Telegram worker later.
  */
-import { getModelProvider, type GenerateOptions, type ModelMessage, type ModelProvider } from "@/lib/model";
+import { callProvider } from "@/lib/providers";
+import type { ModelMessage } from "@/lib/model/types";
 import { buildSystemPrompt } from "./persona";
 
 export interface RuntimeInput {
@@ -52,13 +53,11 @@ export interface AgentRuntimeOptions {
 const DEFAULT_HISTORY_LIMIT = 24;
 
 export class AgentRuntime {
-  private readonly provider: ModelProvider;
   private readonly systemPrompt: string;
   private readonly historyLimit: number;
   private readonly contextProviders: ContextProvider[];
 
-  constructor(provider: ModelProvider, options: AgentRuntimeOptions = {}) {
-    this.provider = provider;
+  constructor(options: AgentRuntimeOptions = {}) {
     this.systemPrompt = options.systemPrompt ?? buildSystemPrompt();
     this.historyLimit = options.historyLimit ?? DEFAULT_HISTORY_LIMIT;
     this.contextProviders = options.contextProviders ?? [];
@@ -66,9 +65,12 @@ export class AgentRuntime {
 
   async respond(input: RuntimeInput): Promise<RuntimeResult> {
     const messages = await this.buildMessages(input);
-    const options: GenerateOptions = { signal: input.signal };
 
-    const result = await this.provider.generate(messages, options);
+    const result = await callProvider(messages, {
+      signal: input.signal,
+      temperature: input.temperature,
+      maxTokens: input.maxTokens,
+    });
 
     return {
       conversationId: input.conversationId,
@@ -106,7 +108,7 @@ let runtime: AgentRuntime | null = null;
 /** Shared runtime instance for the running server process. */
 export function getAgentRuntime(): AgentRuntime {
   if (!runtime) {
-    runtime = new AgentRuntime(getModelProvider());
+    runtime = new AgentRuntime();
   }
   return runtime;
 }

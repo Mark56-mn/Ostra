@@ -1,4 +1,4 @@
-# Ostra — v0
+# Ostra — v0.2
 
 **Ostra** is an experimental autonomous agent system. This repository is its first working
 prototype: the **communication layer**, a polished web application for talking to the Ostra model.
@@ -14,16 +14,16 @@ Scheduler  = autonomy
 Website    = communication + control interface
 ```
 
-**v0 implements only the model link and a thin runtime.** No tools, no persistent memory, no
-scheduler, no background execution, no authentication, no database. The UI says so out loud rather
-than implying capabilities that do not exist.
+**v0.2 implements the model link, a multi-provider gateway, and a thin runtime.** No tools, no
+persistent memory, no scheduler, no background execution, no authentication, no database. The UI
+says so out loud rather than implying capabilities that do not exist.
 
 Live request path:
 
 ```
-User → Ostra Web UI → POST /api/chat → Agent Runtime → ModelProvider → Model endpoint
-                                                              ↓
-User ← Ostra Web UI ← JSON response (message, conversationId) ←──┘
+User → Ostra Web UI → POST /api/chat → Agent Runtime → Provider Gateway → Selected Provider → Model endpoint
+                                                                          ↓
+User ← Ostra Web UI ← JSON response (message, conversationId) ←─────────┘
 ```
 
 ---
@@ -36,8 +36,8 @@ bun run dev          # http://localhost:3000
 ```
 
 No configuration is required. With an empty environment Ostra runs in **mock mode**: replies come
-from a built-in simulated provider so the whole product can be developed and tested before the
-model endpoint exists.
+from a built-in simulated provider so the whole product can be developed and tested before any
+real model endpoint exists.
 
 ```bash
 bun run typecheck    # tsc --noEmit
@@ -45,43 +45,126 @@ bun run lint         # eslint
 bun run build        # production build
 ```
 
-## Model modes
+## Provider gateway
 
-| `MODEL_MODE` | Behaviour |
+Ostra v0.2 routes model calls through a **provider gateway** — a single entry point that resolves
+the active provider from environment variables and picks the correct adapter.
+
+```
+Browser → POST /api/chat → Agent Runtime → Provider Gateway → Provider Adapter → Provider API
+```
+
+### Supported providers
+
+| Provider | API Format | Free Tier | Key Env Var | Notes |
+| --- | --- | --- | --- | --- |
+| **OpenRouter** | OpenAI-compatible | `:free` model suffix | `OPENROUTER_API_KEY` | Largest free model catalog |
+| **Groq** | OpenAI-compatible | Rate-limited free | `GROQ_API_KEY` | Fastest inference, generous limits |
+| **Mistral** | OpenAI-compatible | Free tier available | `MISTRAL_API_KEY` | European provider, good quality |
+| **NVIDIA NIM** | OpenAI-compatible | Free credits | `NVIDIA_API_KEY` | Nemotron models, enterprise-grade |
+| **Google Gemini** | Gemini-native | Free tier | `GEMINI_API_KEY` | Uses REST API directly |
+| **Custom** | OpenAI-compatible | — | `AI_API_KEY` | Any OpenAI-compatible endpoint |
+| **Mock** | Built-in | Always free | none | Simulated replies for development |
+
+> Free tiers and model availability change. Do not present any provider as permanently free.
+> Verify current status at each provider's documentation before depending on a free tier.
+
+### Switching providers
+
+Switching providers is an **environment variable change**, not a code change:
+
+```bash
+# Example: use Groq (fast, generous free tier)
+AI_PROVIDER=groq
+GROQ_API_KEY=your-groq-key
+
+# Example: use OpenRouter (largest free model catalog)
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=your-openrouter-key
+
+# Example: use Gemini
+AI_PROVIDER=gemini
+GEMINI_API_KEY=your-gemini-key
+```
+
+The gateway automatically:
+- Selects the correct adapter (OpenAI-compatible or Gemini-native)
+- Appends `/chat/completions` to the base URL
+- Adds provider-specific headers (e.g. OpenRouter's `HTTP-Referer`)
+- Handles timeout, abort signals, and error classification
+- Falls back to mock mode when no provider is configured
+
+### Default models
+
+Each provider has a sensible default model. Override with `AI_MODEL`:
+
+| Provider | Default Model |
 | --- | --- |
-| `mock` | Built-in simulated Ostra replies. No network, no keys. |
-| `http` | Every turn is forwarded to `MODEL_API_URL` over HTTP (server-side only). |
-| *(unset)* | Auto-selects: `http` when `MODEL_API_URL` is set, otherwise `mock`. |
+| OpenRouter | `google/gemma-3-1b-it:free` |
+| Groq | `llama-3.1-8b-instant` |
+| Mistral | `mistral-small-latest` |
+| NVIDIA | `nvidia/llama-3.1-nemotron-70b-instruct` |
+| Gemini | `gemini-2.0-flash` |
 
-The model is expected to live **outside** the web app. Vercel is the application layer; Kaggle (or a
-VPS, a local server, or any inference provider) is the model-compute layer:
+### Legacy compatibility
 
+The v0.1 `MODEL_MODE` / `MODEL_API_URL` variables still work:
+
+```bash
+MODEL_MODE=http
+MODEL_API_URL=https://your-endpoint/v1/chat/completions
+MODEL_API_KEY=your-key
 ```
-Vercel  →  MODEL_API_URL  →  Kaggle model
-```
 
-Changing the model is an environment change, never a code change.
+This is treated as a "custom" OpenAI-compatible provider. The new `AI_PROVIDER` system takes
+priority when both are set.
 
 ## Environment variables
 
-The template lives in **`env.example`** at the repository root (this workspace's tooling refuses to
-write dot-prefixed env paths, so the file is not named `.env.example`; it is byte-for-byte the same
-template). Copy it to `.env.local` and set the same keys in hosting:
+Copy `env.example` to `.env.local` and set the keys you need:
 
 ```bash
 cp env.example .env.local
 ```
 
+### Provider routing
+
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `MODEL_MODE` | no | `mock` or `http`. Unset = auto. |
-| `MODEL_API_URL` | for `http` | Full URL of the model endpoint. |
-| `MODEL_API_KEY` | no | Bearer token for that endpoint. **Server-side only.** |
-| `MODEL_NAME` | no | Model identifier sent to the endpoint (default `ostra-experimental`). |
-| `MODEL_API_FORMAT` | no | `openai` (default) or `simple` request body. |
-| `MODEL_TIMEOUT_MS` | no | Per-call timeout, default `45000`. |
-| `OSTRA_MAX_MESSAGE_LENGTH` | no | Max accepted user message, default `8000`. |
-| `OSTRA_RATE_LIMIT_MAX` / `OSTRA_RATE_LIMIT_WINDOW` | no | Per-IP chat limit, default `30` / `60` s. |
+| `AI_PROVIDER` | no | Active provider: `openrouter`, `groq`, `mistral`, `nvidia`, `gemini`, `custom`, `mock` |
+| `AI_MODEL` | no | Model ID override (each provider has a default) |
+| `AI_API_KEY` | no | Generic key override (provider-specific keys take priority) |
+| `AI_BASE_URL` | no | Base URL override (each provider has a default) |
+
+### Provider API keys (only the active provider needs one)
+
+| Variable | Provider |
+| --- | --- |
+| `OPENROUTER_API_KEY` | OpenRouter |
+| `NVIDIA_API_KEY` | NVIDIA NIM |
+| `GEMINI_API_KEY` | Google Gemini |
+| `GROQ_API_KEY` | Groq |
+| `MISTRAL_API_KEY` | Mistral |
+
+### Legacy model variables (still supported)
+
+| Variable | Purpose |
+| --- | --- |
+| `MODEL_MODE` | `mock` or `http` (auto-selects if unset) |
+| `MODEL_API_URL` | Full URL of a custom model endpoint |
+| `MODEL_API_KEY` | Bearer token for custom endpoint |
+| `MODEL_NAME` | Model identifier (default `ostra-experimental`) |
+
+### Application parameters
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MODEL_TIMEOUT_MS` | `60000` | Per-call timeout |
+| `MODEL_MAX_TOKENS` | `1024` | Max tokens in response |
+| `MODEL_TEMPERATURE` | `0.7` | Sampling temperature |
+| `OSTRA_MAX_MESSAGE_LENGTH` | `8000` | Max accepted user message |
+| `OSTRA_RATE_LIMIT_MAX` | `30` | Per-IP chat rate limit |
+| `OSTRA_RATE_LIMIT_WINDOW` | `60` | Rate limit window (seconds) |
 
 Never commit real secrets. Nothing in this list is exposed to the browser: the client talks only to
 Ostra's own `/api/*` routes.
@@ -98,9 +181,9 @@ Ostra's own `/api/*` routes.
 {
   "message": "Hello. I'm Ostra.",
   "conversationId": "3f1c…",
-  "model": "ostra-experimental",
-  "provider": "http",
-  "mode": "http",
+  "model": "llama-3.1-8b-instant",
+  "provider": "groq",
+  "mode": "live",
   "latencyMs": 412
 }
 ```
@@ -127,76 +210,14 @@ Status codes: `400` invalid input · `413` body too large · `415` wrong content
   "status": "ok",
   "system": "ostra",
   "version": "0.1.0",
-  "mode": "mock",
-  "provider": "mock",
-  "model": "ostra-experimental",
-  "endpointConfigured": false,
-  "apiFormat": "openai",
-  "timestamp": "2026-09-18T06:17:00.634Z"
+  "mode": "live",
+  "provider": "groq",
+  "model": "llama-3.1-8b-instant",
+  "endpointConfigured": true,
+  "apiFormat": "openai-compatible",
+  "timestamp": "2026-09-20T12:00:00.000Z"
 }
 ```
-
-## Connecting the experimental model (Kaggle)
-
-Ostra posts JSON to `MODEL_API_URL` **from the server**, so the endpoint needs no CORS headers, and
-`MODEL_API_KEY` stays hidden. Any endpoint that accepts a POST and returns JSON or plain text works.
-
-Default request body (`MODEL_API_FORMAT=openai`):
-
-```json
-{
-  "model": "ostra-experimental",
-  "messages": [
-    { "role": "system", "content": "You are Ostra, …" },
-    { "role": "user", "content": "Hello" }
-  ],
-  "temperature": 0.7,
-  "max_tokens": 768,
-  "stream": false
-}
-```
-
-`MODEL_API_FORMAT=simple` adds a `prompt` field with the latest user message, for notebooks that
-expect a single string.
-
-The response parser accepts OpenAI-style replies plus the flat shapes small self-hosted servers tend
-to return: `choices[0].message.content`, `choices[0].text`, `message`, `response`, `output`,
-`content`, `text`, `generated_text`, `completion`, `result`, or a plain-text body. `usage` tokens are
-picked up when present.
-
-A minimal Kaggle-side endpoint (FastAPI + ngrok, inside the notebook):
-
-```python
-from fastapi import FastAPI
-from pydantic import BaseModel
-
-app = FastAPI()
-
-class Turn(BaseModel):
-    role: str
-    content: str
-
-class ChatRequest(BaseModel):
-    model: str | None = None
-    messages: list[Turn] = []
-
-@app.post("/generate")
-def generate(body: ChatRequest):
-    reply = run_your_model(body.messages)          # your inference call
-    return {"choices": [{"message": {"role": "assistant", "content": reply}}]}
-```
-
-Then in the hosting environment:
-
-```
-MODEL_MODE=http
-MODEL_API_URL=https://<your-tunnel>.ngrok-free.app/generate
-MODEL_API_KEY=<token your endpoint expects, if any>
-MODEL_NAME=ostra-experimental
-```
-
-A Kaggle notebook is an experimental host, not a production one — when the model graduates, the same
-endpoint contract works on a VPS, a local vLLM/llama.cpp server, or any OpenAI-compatible API.
 
 ## Architecture
 
@@ -213,6 +234,7 @@ src/
 │   └── chat/                    # workspace, message list, composer, empty state
 ├── hooks/use-chat.ts            # React binding for the store
 └── lib/
+    ├── providers/               # provider gateway, registry, config, adapters
     ├── model/                   # types, config, mock + http providers, registry
     ├── agent/                   # persona + runtime (context hook points)
     ├── api/                     # validation, rate limiting, safe errors
@@ -222,13 +244,12 @@ src/
 
 ### Where future layers plug in
 
-- **Another model backend** — implement `ModelProvider` (`lib/model/types.ts`) and call
-  `registerModelProvider("local", factory)`. Nothing else changes. `MODEL_MODE` selects it.
+- **Another provider** — add a `ProviderDefinition` to `lib/providers/registry.ts` and implement
+  the adapter if it's not OpenAI-compatible. Nothing else changes. `AI_PROVIDER` selects it.
 - **Persistent memory** — `AgentRuntime` accepts `contextProviders`: async functions that return
   extra messages (recalled memories, tool results) placed before the conversation history.
 - **Database (Postgres/Supabase)** — `ConversationRepository` (`lib/conversations/types.ts`) is the
-  storage seam; swap the browser implementation for a server-backed one. The store already awaits
-  repositories, so an async implementation drops in.
+  storage seam; swap the browser implementation for a server-backed one.
 - **Tools / task queue / scheduler** — `AgentRuntime.respond()` is framework-free and holds no
   request objects, so a queue worker or cron entrypoint can call the same runtime.
 - **Telegram / mobile clients** — they consume `POST /api/chat`, which already returns a stable
@@ -236,7 +257,7 @@ src/
 
 ## Conversations
 
-v0 stores conversations in the browser (`localStorage`, key `ostra.conversations.v1`): id, title,
+v0.2 stores conversations in the browser (`localStorage`, key `ostra.conversations.v1`): id, title,
 messages, `createdAt`, `updatedAt`. Stored data is re-validated on load. API keys are never written
 to client storage — there are none on the client at all.
 
@@ -263,11 +284,12 @@ no durable server-side storage, and rate limiting is per server instance.
    build command is `next build` and the output is served automatically — no configuration file
    needed.
 2. Add environment variables in *Project → Settings → Environment Variables*:
-   `MODEL_MODE`, `MODEL_API_URL`, `MODEL_API_KEY`, `MODEL_NAME` (start with `MODEL_MODE=mock` to
-   confirm the deployment before linking the model).
+   - Start with `AI_PROVIDER=mock` (or leave unset) to confirm the deployment works.
+   - Then set `AI_PROVIDER=groq` and `GROQ_API_KEY=your-key` for a live provider.
 3. Deploy, then check `https://<your-app>/api/health` — it should report `status: "ok"`.
-4. Switch `MODEL_MODE` to `http`, point `MODEL_API_URL` at the model endpoint, and redeploy. Set the
-   same variables for Preview and Production if you want both to work.
+4. Switch providers by changing `AI_PROVIDER` and the corresponding key. No code changes needed.
+
+See `DEPLOY.md` for a detailed deployment walkthrough.
 
 **Any Node host** — `bun install && bun run build && bun run start` behind a reverse proxy. API routes
 use the Node.js runtime; serverless functions should allow at least 60 s for a chat turn

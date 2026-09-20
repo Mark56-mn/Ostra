@@ -1,12 +1,12 @@
-# Ostra v0 — Vercel Production Deployment Guide
+# Ostra v0.2 — Vercel Production Deployment Guide
 
-This guide walks through deploying Ostra v0 to Vercel production.
+This guide walks through deploying Ostra v0.2 to Vercel production.
 
 ## Prerequisites
 
 - GitHub repository with Ostra code
 - Vercel account (free tier works)
-- (Optional) A running model endpoint (Kaggle, VPS, or OpenAI-compatible API)
+- (Optional) A provider API key for a live model
 
 ---
 
@@ -22,7 +22,7 @@ This guide walks through deploying Ostra v0 to Vercel production.
    - **Install Command:** `bun install`
 6. Click **Deploy**
 
-> **First deploy uses mock mode** — no model endpoint needed yet.
+> **First deploy uses mock mode** — no provider key needed yet.
 
 ---
 
@@ -44,7 +44,7 @@ After the first deploy completes:
      "version": "0.1.0",
      "mode": "mock",
      "provider": "mock",
-     "model": "ostra-experimental",
+     "model": "ostra-mock-1",
      "endpointConfigured": false
    }
    ```
@@ -52,28 +52,72 @@ After the first deploy completes:
 
 ---
 
-## Step 3: Configure Environment Variables
+## Step 3: Choose and Configure a Provider
 
 Go to **Project Settings → Environment Variables** in Vercel.
 
-### Required for production (when using a real model):
+### Option A: Groq (recommended for speed + generous free tier)
 
-| Variable | Value | Notes |
-|----------|-------|-------|
-| `MODEL_MODE` | `http` | Use `mock` for testing without a model |
-| `MODEL_API_URL` | `https://your-endpoint.ngrok-free.app/generate` | Full URL to your model |
-| `MODEL_API_KEY` | `your-api-key-here` | (Optional) Bearer token for the endpoint |
+```
+AI_PROVIDER=groq
+GROQ_API_KEY=your-groq-api-key
+```
 
-### Optional configuration:
+Get a key at [console.groq.com/keys](https://console.groq.com/keys).
 
-| Variable | Value | Default |
-|----------|-------|---------|
-| `MODEL_NAME` | `ostra-experimental` | `ostra-experimental` |
-| `MODEL_API_FORMAT` | `openai` or `simple` | `openai` |
-| `MODEL_TIMEOUT_MS` | `45000` | `45000` |
-| `OSTRA_MAX_MESSAGE_LENGTH` | `8000` | `8000` |
-| `OSTRA_RATE_LIMIT_MAX` | `30` | `30` |
-| `OSTRA_RATE_LIMIT_WINDOW` | `60` | `60` |
+### Option B: OpenRouter (largest free model catalog)
+
+```
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=your-openrouter-key
+```
+
+Get a key at [openrouter.ai/keys](https://openrouter.ai/keys).
+
+### Option C: Mistral
+
+```
+AI_PROVIDER=mistral
+MISTRAL_API_KEY=your-mistral-key
+```
+
+Get a key at [console.mistral.ai/api-keys](https://console.mistral.ai/api-keys).
+
+### Option D: NVIDIA NIM
+
+```
+AI_PROVIDER=nvidia
+NVIDIA_API_KEY=your-nvidia-key
+```
+
+Get a key at [build.nvidia.com](https://build.nvidia.com).
+
+### Option E: Google Gemini
+
+```
+AI_PROVIDER=gemini
+GEMINI_API_KEY=your-gemini-key
+```
+
+Get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+
+### Option F: Custom endpoint (Kaggle, VPS, etc.)
+
+```
+AI_PROVIDER=custom
+AI_API_KEY=your-endpoint-key
+AI_BASE_URL=https://your-endpoint.com/v1
+MODEL_TIMEOUT_MS=60000
+```
+
+### Option G: Legacy mode (still supported)
+
+```
+MODEL_MODE=http
+MODEL_API_URL=https://your-endpoint.com/chat/completions
+MODEL_API_KEY=your-key
+MODEL_NAME=ostra-experimental
+```
 
 ### Environment scoping
 
@@ -84,41 +128,11 @@ Set variables for each environment:
 
 ---
 
-## Step 4: Connect Model Endpoint (Kaggle/VPS)
+## Step 4: Switch to Live Provider
 
-### Option A: Kaggle (Experimental)
-
-1. Start your Kaggle notebook with the model endpoint
-2. Expose via ngrok: `ngrok http 8000` (or your port)
-3. Copy the ngrok URL (e.g., `https://abc123.ngrok-free.app`)
-4. Add to Vercel:
-   ```
-   MODEL_MODE=http
-   MODEL_API_URL=https://abc123.ngrok-free.app/generate
-   ```
-5. Redeploy (or trigger a new deployment)
-
-### Option B: VPS / Dedicated Server
-
-1. Deploy model on your VPS (vLLM, llama.cpp, or custom FastAPI)
-2. Set up HTTPS (nginx reverse proxy + Let's Encrypt)
-3. Add to Vercel:
-   ```
-   MODEL_MODE=http
-   MODEL_API_URL=https://your-domain.com/v1/chat/completions
-   MODEL_API_KEY=your-auth-token
-   ```
-
-### Option C: OpenAI-Compatible API
-
-1. Get API key from OpenAI, Together AI, Groq, etc.
-2. Add to Vercel:
-   ```
-   MODEL_MODE=http
-   MODEL_API_URL=https://api.openai.com/v1/chat/completions
-   MODEL_API_KEY=sk-your-openai-key
-   MODEL_NAME=gpt-4o-mini
-   ```
+1. Update `AI_PROVIDER` to your chosen provider
+2. Add the corresponding API key
+3. Redeploy (or trigger a new deployment via Vercel dashboard)
 
 ---
 
@@ -128,17 +142,17 @@ Set variables for each environment:
    ```bash
    curl https://your-app.vercel.app/api/health
    ```
-   Should show `"mode": "http"` and `"endpointConfigured": true`
+   Should show `"mode": "live"` and `"endpointConfigured": true`
 
 2. Test chat functionality:
    - Send a message in the UI
-   - Verify Ostra responds from your model endpoint
+   - Verify Ostra responds from your provider
    - Check conversation persists in browser (localStorage)
 
 3. Monitor Vercel logs:
    - Go to **Project → Logs**
    - Check for any `[ostra:*]` error messages
-   - Verify model requests are reaching your endpoint
+   - Verify model requests are reaching your provider
 
 ---
 
@@ -156,7 +170,7 @@ Set variables for each environment:
 - [ ] Deployment succeeds (no build errors)
 - [ ] Health endpoint returns `status: "ok"`
 - [ ] Chat interface loads and is responsive
-- [ ] Mock mode works (or HTTP mode with real endpoint)
+- [ ] Live provider responds (not just mock)
 - [ ] API keys are NOT visible in browser (check Network tab)
 - [ ] Error messages are user-friendly (no stack traces)
 - [ ] Rate limiting is active (check `X-RateLimit-*` headers)
@@ -177,15 +191,17 @@ Set variables for each environment:
 ### Model not responding
 
 1. Check health endpoint: `endpointConfigured` should be `true`
-2. Verify `MODEL_API_URL` is correct and accessible
-3. Check Vercel logs for `[ostra:chat]` error messages
-4. Ensure your model endpoint accepts POST requests with JSON body
+2. Verify `AI_PROVIDER` is set to a valid provider
+3. Verify the API key is correct and has quota remaining
+4. Check Vercel logs for `[ostra:chat]` error messages
+5. Try switching to a different provider to isolate the issue
 
 ### Environment variables not working
 
 1. Verify variables are set in **Production** scope (not just Preview)
 2. Redeploy after changing environment variables
 3. Check variable names match exactly (case-sensitive)
+4. Only the active provider's key is needed — others can be left unset
 
 ---
 
@@ -205,13 +221,18 @@ Set variables for each environment:
 │  │  Server (API Route)                              │  │
 │  │  - Validation + Rate Limiting                    │  │
 │  │  - Agent Runtime                                 │  │
-│  │  - Model Provider (http mode)                    │  │
-│  │  - Environment: MODEL_API_URL, MODEL_API_KEY     │  │
+│  │  - Provider Gateway                              │  │
+│  │    ├── OpenRouter adapter                        │  │
+│  │    ├── Groq adapter                              │  │
+│  │    ├── Mistral adapter                           │  │
+│  │    ├── NVIDIA NIM adapter                        │  │
+│  │    ├── Gemini adapter                            │  │
+│  │    └── Custom / Legacy adapter                   │  │
 │  └────────────────────┬─────────────────────────────┘  │
 └───────────────────────┼─────────────────────────────────┘
                         │ HTTPS POST
 ┌───────────────────────▼─────────────────────────────────┐
-│  Model Endpoint (Kaggle / VPS / OpenAI)                 │
+│  Provider API (OpenRouter / Groq / Mistral / etc.)      │
 │  - Not managed by Vercel                                │
 │  - Hosts the AI model                                   │
 │  - Returns JSON response                                │
@@ -223,37 +244,26 @@ Set variables for each environment:
 ## Environment Variable Security
 
 **Client-side (browser):** NEVER
-- No `MODEL_API_URL`
-- No `MODEL_API_KEY`
+- No provider API keys
+- No model endpoints
 - No server secrets
 
 **Server-side (API routes only):**
+- All `AI_*` variables
+- All provider API keys
 - All `MODEL_*` variables
-- All `OSTRA_*` configuration
 
-The browser communicates ONLY with Ostra's `/api/*` routes, which proxy requests to the model endpoint. Secrets stay on the server.
-
----
-
-## Updating the Model
-
-Changing the model is an **environment variable change**, not a code change:
-
-1. Update `MODEL_API_URL` to new endpoint
-2. Update `MODEL_API_KEY` if authentication changes
-3. Update `MODEL_NAME` to reflect new model
-4. Redeploy
-
-No code changes required. The model adapter abstraction handles all differences.
+The browser communicates ONLY with Ostra's `/api/*` routes, which proxy requests to the provider.
+Secrets stay on the server.
 
 ---
 
-## Next Steps (After v0)
+## Switching Providers
 
-- [ ] Add authentication (Convex Auth or NextAuth)
-- [ ] Persistent conversation storage (Postgres/Supabase)
-- [ ] Persistent memory system
-- [ ] Tool calling framework
-- [ ] Task queue and scheduler
-- [ ] Rate limiting with Redis
-- [ ] Admin dashboard
+Changing the provider is an **environment variable change**, not a code change:
+
+1. Update `AI_PROVIDER` to the new provider
+2. Update the corresponding API key
+3. Redeploy
+
+No code changes required. The provider gateway handles all differences automatically.
