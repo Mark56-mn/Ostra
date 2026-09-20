@@ -534,3 +534,85 @@ Stage 7
 - Provider failover and scaling
 
 Do not skip directly to Stage 4 before Stage 1-3 are reliable.
+
+## 24. Immediate verification/fix pass — REQUIRED BEFORE STAGE 2
+
+The previous coding agent implemented the multi-provider gateway, but the implementation must now be treated as Stage 1 integration pending verification, not automatically complete.
+
+Do not rebuild the provider architecture. Inspect the current implementation and fix only concrete issues.
+
+### A. Verify every provider against current official documentation
+
+For each enabled provider — OpenRouter, Groq, Mistral, NVIDIA NIM/API, and Google Gemini — verify the actual API base URL, authentication method, request format, response format, current model identifier, current free-tier/credits availability, and current rate limits where documented.
+
+Use the provider's official documentation only for these verification decisions.
+
+The repository must not contain stale, retired, or invented default model IDs. If a configured default model is no longer available, replace it with a currently documented model or require AI_MODEL instead of guessing.
+
+Do not describe a provider as free without qualification. Record whether access is genuinely free-tier, free credits/trial, paid after credits, or unavailable for the intended use.
+
+### B. Test real provider calls
+
+At minimum, successfully test: (1) one OpenAI-compatible provider; (2) one different provider/adapter, preferably Gemini; and (3) mock mode without any provider key.
+
+If real API keys are unavailable to the coding agent, do not fake a successful test. Run all possible static/unit/build checks and clearly report the missing manual test.
+
+### C. Fix invalid-provider behavior
+
+An invalid value such as AI_PROVIDER=does-not-exist must not silently become mock mode.
+
+It should produce a clear configuration error in a safe form and make /api/health report the configuration problem without exposing secrets.
+
+Mock mode should happen only when AI_PROVIDER=mock, or when no provider is configured at all.
+
+### D. Verify provider configuration caching
+
+The configuration resolver memoizes environment-derived configuration. Ensure this does not create confusing behavior during tests or long-lived runtimes. Production may cache immutable environment configuration, but test helpers must be able to reset it. Do not introduce browser-side configuration state.
+
+### E. Verify health and Settings truthfulness
+
+Health/Settings must report the actual active provider/model and whether the required key is present.
+
+They must never claim a provider is live merely because a provider name is configured.
+
+Distinguish safely between mock/unconfigured, configured but key missing, configured with key present, provider request verified successfully, and provider request failed.
+
+Do not expose API keys, authorization headers, upstream response secrets or stack traces.
+
+### F. Provider/model configuration rules
+
+Keep AI_PROVIDER, AI_MODEL, AI_API_KEY, AI_BASE_URL, provider-specific key variables, MODEL_TIMEOUT_MS, MODEL_MAX_TOKENS, and MODEL_TEMPERATURE.
+
+Provider/model switching must remain possible through configuration without application-code changes.
+
+Do not add a giant hard-coded model catalogue.
+
+Use sensible provider defaults only when their current identifiers have been verified. Otherwise require AI_MODEL.
+
+### G. Tests/checks required before declaring Stage 1 complete
+
+Run and report: typecheck; lint; production build; provider routing tests; OpenAI-compatible request construction tests; Gemini/native adapter tests; response parsing tests; missing-key tests; invalid-provider tests; timeout/error handling tests; health secret-leak checks; mock-mode test; and at least two real provider tests when credentials are genuinely available.
+
+Fix failures rather than merely documenting them when the failure is caused by the implementation.
+
+### H. Free-provider claims
+
+The README, Settings and deployment documentation must not make unsupported claims such as free forever, generous free tier without current evidence, fastest, largest free catalog, or recommended based only on old assumptions.
+
+Use factual wording such as free tier currently documented or free credits/trial currently documented, with availability and limits may change.
+
+### I. Stage 1 completion gate
+
+Do NOT move to Stage 2 until the verification/fix pass above is complete.
+
+The final report must explicitly say what was verified; what was changed; which exact model IDs were tested; which tests passed; which real provider calls succeeded; which manual credentials/tests remain; and whether Stage 1 is actually complete.
+
+If any item cannot be completed, leave Stage 1 marked incomplete rather than claiming success.
+
+## 25. After verification — Stage 2 handoff
+
+Only after the Stage 1 completion gate passes, begin Stage 2: Model Control Center.
+
+Stage 2 requirements: server-controlled allowlisted provider/model catalog; active/default model; deliberate selection of one model for a task; deliberate selection of multiple models for a task; optional planner/coder/reviewer/executor roles; no API keys in the browser; no uncontrolled automatic parallel model spending; and task model selections persisted as part of future task configuration.
+
+Do not implement the persistent queue or autonomous execution loop during the Stage 1 verification pass.
