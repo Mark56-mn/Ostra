@@ -202,23 +202,119 @@ Do not stop at an architectural proposal. Inspect the existing code, preserve wo
 Avoid unnecessary dependencies and giant provider files.
 When a provider changes its free tier, Ostra should require configuration/model changes wherever possible, not a rewrite.
     
-## 15. Explicit scope boundary: build Stage 1 first
+## 15. Stage 1 implementation status and exact remaining work
 
-Do NOT attempt to implement full autonomy in this task.
+The repository has already completed the **v0 foundation** and **Vercel deployment preparation**.
 
-This task is **Stage 1: the reliable communication/model layer**.
+### Already implemented — do not rebuild
 
-Stage 1 must get Ostra deployed and talking to real models through a provider gateway. It should leave clean interfaces for the autonomy system described below.
+The coding agent must preserve these working pieces unless a concrete bug requires a change:
 
-The coding agent should not add a fake "autonomous" system, pretend background execution works, or create a queue that only exists in the UI.
+- Next.js 15 + React 19 + TypeScript + Tailwind application.
+- Mobile-first Ostra chat/control-center UI.
+- `POST /api/chat`.
+- `GET /api/health`.
+- `AgentRuntime`.
+- `ModelProvider` abstraction and provider registry.
+- Built-in mock provider.
+- Generic HTTP model provider with:
+  - OpenAI-compatible request format
+  - simple request format
+  - bearer authentication
+  - timeout/cancellation
+  - HTTP error classification
+  - tolerant response parsing
+  - usage extraction
+- Server-side model configuration.
+- Browser-local conversation repository and sanitization.
+- Input validation, message limits, in-memory rate limiting and safe API errors.
+- Settings, Tasks and Memory pages.
+- Existing Vercel deployment configuration and deployment documentation.
 
-Stage 1 should provide:
-- reliable chat with a selected provider/model
-- configuration-based provider/model switching
-- safe model status in the website
-- Vercel-ready deployment
-- clean Agent Runtime -> Model Gateway boundary
-- placeholders for future Tasks, Memory and Settings capabilities
+Do **not** replace the existing model abstraction with a completely different architecture.
+
+### Current implementation reality
+
+The existing provider registry currently contains only:
+
+- `mock`
+- `http`
+
+The generic HTTP provider is **not** the same thing as having OpenRouter, NVIDIA, Gemini, Groq and Mistral integrations. Those integrations are still required.
+
+The existing Settings page is read-only. It reports server configuration but does not provide model selection.
+
+Tasks and Memory are placeholders. There is currently no persistent queue, worker, scheduler, persistent memory database or autonomous execution loop.
+
+### Exact Stage 1 job now
+
+Build on the existing code and complete **only the missing Stage 1 model/communication work**:
+
+1. Create a clean provider gateway around the existing `ModelProvider` contract.
+2. Add verified integrations for:
+   - OpenRouter
+   - NVIDIA NIM/API
+   - Google Gemini API
+   - Groq
+   - Mistral
+3. Reuse the existing generic OpenAI-compatible HTTP adapter wherever the provider supports it.
+4. Add provider-specific adapters only where the API materially differs.
+5. Centralize provider/model configuration.
+6. Support configuration-based switching without application-code changes.
+7. Keep provider/model IDs environment-configurable and current.
+8. Add safe provider/model status to Settings and Health.
+9. Preserve backward compatibility with `MODEL_MODE`, `MODEL_API_URL`, `MODEL_API_KEY`, `MODEL_NAME` where practical.
+10. Add tests for provider routing, request construction, response parsing, missing keys, invalid providers, timeout/error handling and switching.
+11. Verify the Vercel production build, typecheck and lint.
+12. Update README and environment documentation with the actual implemented providers and current free-tier limitations.
+
+### Important provider rule
+
+Before implementing or finalizing each provider, verify its **current official API documentation and current model/free-tier availability**.
+
+Do not invent model IDs.
+
+Do not assume a model or free tier is permanent.
+
+If a provider cannot be safely integrated because its current API/free access is unavailable, document that fact and keep the gateway extensible rather than adding fake support.
+
+### Initial model
+
+Use the current NVIDIA Nemotron 3.5 Lightning 30B A3B model only if the exact current identifier and usable API access are verified during implementation.
+
+Also configure at least one currently usable free OpenRouter model when available.
+
+Do not hard-code either provider as permanently free.
+
+### Definition of done for the current agent task
+
+The task is complete only when:
+
+- Existing Ostra v0 functionality still works.
+- Mock mode still works without external keys.
+- At least one real provider is successfully integrated and testable.
+- A second provider can be selected through configuration without changing application code.
+- Provider credentials remain server-side.
+- `/api/health` reports safe provider/model/configuration status.
+- Settings reports the active provider/model safely.
+- Provider switching is documented.
+- Tests/checks pass or any unavoidable environment limitation is explicitly documented.
+- Vercel deployment remains compatible.
+- No fake autonomy, fake queue, fake memory or fake tool execution is added.
+
+### Required final report from the coding agent
+
+At the end of the implementation, report:
+
+1. Files changed.
+2. Providers actually implemented.
+3. Exact model IDs used/tested.
+4. Which providers were verified against current official documentation.
+5. Which provider keys are required.
+6. Tests/checks run and their results.
+7. Any provider/API/free-tier limitations discovered.
+8. Exact manual Vercel environment variables the human owner must add.
+9. A short list of what remains for Stage 2.
 
 ## 16. Stage 2 — model selection and task routing
 
@@ -400,13 +496,14 @@ This is a future backend/worker requirement, not a Stage 1 requirement.
 ## 23. Final roadmap
 
 Stage 1 — **Now**
+- Complete the existing v0 foundation rather than rebuilding it
 - Multi-provider gateway
-- Free provider integrations
-- Model switching through configuration
-- Modern website
+- Verified free-provider integrations
+- Configuration-based model switching
+- Safe provider/model status
+- Modern website polish where needed
 - Vercel deployment
-- Health/status
-- Secure server-side keys
+- Tests and documentation
 
 Stage 2 — **After Stage 1**
 - Website model catalog
