@@ -205,6 +205,18 @@ Set variables for each environment:
 
 ---
 
+## Future Infrastructure
+
+Stage 1 runs entirely on Vercel serverless functions. Future stages will add backend infrastructure
+for persistent task queues, autonomous execution, and long-running workers.
+
+**Planned direction:** Cloudflare (Workers, D1, Queues, Workflows) for lightweight backend
+orchestration, with a VPS path available for heavy/long-running compute. Infrastructure-specific
+code is isolated behind adapters so workloads can move between Cloudflare and VPS without
+rewriting the agent runtime.
+
+This does not affect the current Vercel deployment — no backend infrastructure is required today.
+
 ## Architecture Reference
 
 ```

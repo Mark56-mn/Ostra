@@ -293,6 +293,57 @@ no durable server-side storage, and rate limiting is per server instance.
 
 See `DEPLOY.md` for a detailed deployment walkthrough.
 
+## Future infrastructure
+
+Ostra is designed so the execution backend can change without rewriting the agent architecture.
+
+**Current direction:** Cloudflare (Workers, D1, Queues, Workflows, Durable Objects) is the planned
+infrastructure for the persistent task queue, autonomy runtime, and long-running background work
+once those stages are built. Cloudflare is **not** a permanent lock-in — when a VPS becomes
+available, Ostra can run lightweight workloads on Cloudflare and heavy/long-running workloads on a
+VPS worker simultaneously.
+
+```
+Vercel (website)
+  |
+  v
+Cloudflare control plane (planned)
+  +--> D1 / state
+  +--> Queues
+  +--> Workflows
+  +--> Durable Objects
+  |
+  v
+Ostra Agent Runtime
+  |
+  v
+Model Gateway (OpenRouter / Groq / Gemini / NVIDIA / Mistral)
+```
+
+The VPS path remains architecturally possible at every stage:
+
+```
+Vercel (website)
+  |
+  v
+API / Control Plane
+  |
+  v
+Persistent DB / Queue
+  |
+  v
+Ostra Worker (VPS)
+  +--> Model Gateway
+  +--> Tools
+  +--> Memory
+```
+
+Infrastructure-specific code is isolated behind interfaces/adapters so workloads can move between
+Cloudflare and VPS without rewriting the agent runtime, task system, or model gateway.
+
+**Stage 1 (current):** provider gateway + web communication only. No Cloudflare or VPS backend
+infrastructure is implemented yet.
+
 **Any Node host** — `bun install && bun run build && bun run start` behind a reverse proxy. API routes
 use the Node.js runtime; serverless functions should allow at least 60 s for a chat turn
 (`maxDuration` is already exported by the chat route).
