@@ -318,9 +318,9 @@ src/
 tests/                           # 85 tests: routing, gateway, security, selection
 ```
 
-## Model Control Center (Stage 2)
+## Model & Tool Control Center (Stage 2)
 
-The `/models` page is the single place where models are selected. Its rules:
+The `/models` page is the control layer for models, tools and integrations. Its rules:
 
 - The catalog is **server-controlled and allowlisted** — the UI can only offer what
   `src/lib/providers/catalog.ts` lists, and every selection is re-validated server-side.
@@ -331,6 +331,43 @@ The `/models` page is the single place where models are selected. Its rules:
   rejected.
 - Saving a task configuration executes nothing. There is no queue and no autonomy loop yet —
   those are Stages 3–4 and are not faked.
+
+### Where future layers plug in
+
+### Tools (Stage 2)
+
+The tool registry (`src/lib/tools/`) is provider-independent and server-controlled:
+
+- **Tool registry** — every tool is an allowlisted `ToolDefinition` (id, category, JSON-Schema
+  input, execution type `openrouter | vercel-connect | native | external`, permission level
+  `read → write → execute → external_action → financial → destructive`, risk level, approval flag).
+- **OpenRouter server tools** — `openrouter:web_search`, `web_fetch`, `datetime`, `shell`,
+  `image_generation` are attached to model requests and executed by OpenRouter server-side
+  (`max_tool_calls` caps the agent loop at ≤30). The model decides when to call them; Ostra only
+  declares them and enforces compatibility.
+- **Model ↔ tool compatibility** — a tool is only attachable when the model's *verified*
+  capability registry entry supports it. Unverified capability → refusal with a structured error,
+  never a guess.
+- **Permissions & approval** — `financial`/`destructive` tools always require explicit
+  confirmation and can never be configured to skip it. `external_action` tools are
+  approval-gated by default. Enable/disable happens through `POST /api/tools/configure`.
+- **Native execution** — `POST /api/tools/execute` runs the full pipeline (registry → config →
+  compatibility → permission → schema validation → adapter). Vercel Connect execution returns
+  `501` until Stage 3 wires per-connector operations.
+
+### Integrations (Vercel Connect)
+
+`src/lib/integrations/` mirrors the **current** Vercel Connect catalog (vercel.com/connect/browse,
+fetched 2026-09-21): 12 tier-1 integrations (GitHub, Vercel, Supabase, Mem0, Firecrawl, AgentMail,
+Google, Cloudflare, Notion, Slack, Telegram Bot, Zapier) enabled in the registry by default, plus
+~45 tier-2 connectors registered but disabled. The API distinguishes honestly between
+available / connected / enabled / authorized / unavailable — a connector existing in Vercel is
+never reported as connected. Connection verification uses `@vercel/connect` scoped runtime
+credentials (deployment OIDC → short-lived provider token, never persisted, never returned).
+
+Endpoints: `GET /api/tools`, `/api/tools/[id]`, `/api/integrations`, `/api/integrations/[id]`
+(`?probe=1` performs a live connection probe), `POST /api/tools/validate`, `/api/tools/execute`,
+`/api/tools/configure`.
 
 ### Where future layers plug in
 

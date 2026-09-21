@@ -54,6 +54,7 @@ beforeEach(() => {
   void import("@/lib/providers/config").then((m) => m.resetProviderConfig());
   void import("@/lib/model/config").then((m) => m.resetModelConfig());
   void import("@/lib/model-selection/store").then((m) => m.modelSelectionStore.reset());
+  void import("@/lib/tools/config").then((m) => m.toolConfigStore.reset());
 });
 
 /** Await all pending dynamic imports from the beforeEach hook. */

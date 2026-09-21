@@ -24,6 +24,13 @@ export interface GenerateOptions {
    * the server-side allowlist before it reaches the gateway.
    */
   providerOverride?: { providerId: string; modelId: string };
+  /**
+   * Stage 2: OpenRouter server-tool attachments. Must come from the tool
+   * registry and pass model/tool compatibility before reaching the gateway.
+   */
+  tools?: Array<{ type: string; parameters?: Record<string, unknown> }>;
+  /** Step budget for OpenRouter's server-tool agent loop (default 5, max 30). */
+  maxToolCalls?: number;
 }
 
 export interface GenerateUsage {

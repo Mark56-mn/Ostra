@@ -7,6 +7,7 @@
  */
 import { NextResponse } from "next/server";
 import { noStoreHeaders } from "@/lib/api/errors";
+import { getAllModelCapabilities } from "@/lib/providers/capabilities";
 import { getModelCatalog } from "@/lib/providers";
 import { resolveProviderConfig } from "@/lib/providers/config";
 
@@ -18,6 +19,9 @@ export async function GET(): Promise<NextResponse> {
 
   const payload = {
     providers: getModelCatalog(),
+    // Verified capability entries — capability claims always carry their
+    // verification source; absent entries mean "unknown", never guessed.
+    capabilities: getAllModelCapabilities(),
     active: {
       mode: config.configError ? "error" : config.mode,
       provider: config.provider?.id ?? "mock",

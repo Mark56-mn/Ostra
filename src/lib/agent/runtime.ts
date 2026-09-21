@@ -32,6 +32,13 @@ export interface RuntimeInput {
    * the allowlist check in @/lib/model-selection — never raw client input.
    */
   providerOverride?: { providerId: string; modelId: string };
+  /**
+   * Stage 2: validated OpenRouter server-tool attachments. Must come from the
+   * tool pipeline in @/lib/tools — never raw client input.
+   */
+  tools?: Array<{ type: string; parameters?: Record<string, unknown> }>;
+  /** Server-tool step budget for this request (1–30). */
+  maxToolCalls?: number;
 }
 
 export interface RuntimeResult {
@@ -76,6 +83,8 @@ export class AgentRuntime {
       temperature: input.temperature,
       maxTokens: input.maxTokens,
       providerOverride: input.providerOverride,
+      tools: input.tools,
+      maxToolCalls: input.maxToolCalls,
     });
 
     return {

@@ -152,6 +152,12 @@ async function callOpenAICompatible(
       temperature: options.temperature ?? provider.temperature,
       max_tokens: options.maxTokens ?? provider.maxTokens,
       stream: false,
+      // Stage 2: OpenRouter server-tool attachments (validated upstream).
+      // Server tools execute inside OpenRouter; Ostra only declares them and
+      // caps the agent-loop step budget (API max is 30).
+      ...(options.tools && options.tools.length > 0
+        ? { tools: options.tools, max_tool_calls: Math.min(Math.max(options.maxToolCalls ?? 5, 1), 30) }
+        : {}),
     };
 
     const headers: Record<string, string> = {

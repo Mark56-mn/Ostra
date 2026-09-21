@@ -973,6 +973,14 @@ Stage 2 must include:
 
 ### Final completion report
 
+> **Status update (2026-09-21) — Model/Tool/Integration control layer shipped.**
+> Model capability registry (verified, unknown-tolerant), provider-independent tool registry with
+> permission ladder + approval boundary, OpenRouter server-tool support (web_search, web_fetch,
+> datetime, shell, image_generation), Vercel Connect adapter (`@vercel/connect` scoped tokens) with
+> the current catalog mirrored, honest integration status, model↔tool compatibility enforcement,
+> `/api/tools*` + `/api/integrations*` endpoints, and the three-section control center UI.
+> Tests: 159/159. Typecheck, lint, production build: green.
+
 The coding agent must report the two workstreams separately:
 
 **Stage 1**

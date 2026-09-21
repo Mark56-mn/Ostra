@@ -15,6 +15,8 @@ import { jsonError, logServerError, noStoreHeaders } from "@/lib/api/errors";
 import { getClientKey, getRateLimiter } from "@/lib/api/rate-limit";
 import { parseChatRequest } from "@/lib/api/validation";
 import { ModelSelectionError, validateModelSelection } from "@/lib/model-selection";
+import { resolveProviderConfig } from "@/lib/providers/config";
+import { ChatToolError, resolveChatTools } from "@/lib/tools/chat-tools";
 import { getActiveProviderConfig, type ChatApiSuccess } from "@/lib/system/info";
 
 export const runtime = "nodejs";
@@ -74,6 +76,22 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
   const override = (providerOverride as { override?: { providerId: string; modelId: string } }).override;
 
+  // Stage 2: optional tool attachments, validated against the registry and
+  // the effective provider/model (override wins over env default).
+  const config = resolveProviderConfig();
+  const effective = override
+    ? { providerId: override.providerId, modelId: override.modelId }
+    : { providerId: config.provider?.id ?? "mock", modelId: config.provider?.model ?? "ostra-mock-1" };
+  let toolAttachment: ReturnType<typeof resolveChatTools>;
+  try {
+    toolAttachment = resolveChatTools(body.tools, effective);
+  } catch (error) {
+    if (error instanceof ChatToolError) {
+      return jsonError(error.status, error.code, error.message, requestId);
+    }
+    throw error;
+  }
+
   const providerConfig = getActiveProviderConfig();
 
   try {
@@ -83,6 +101,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       message,
       signal: request.signal,
       ...(override ? { providerOverride: override } : {}),
+      ...(toolAttachment ? { tools: toolAttachment.tools, maxToolCalls: toolAttachment.maxToolCalls } : {}),
     });
 
     const payload: ChatApiSuccess = {
