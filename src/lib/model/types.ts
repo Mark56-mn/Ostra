@@ -14,6 +14,28 @@ export interface ModelMessage {
   content: string;
 }
 
+/**
+ * A native tool exposed to the model as an OpenAI-style function definition.
+ * The model emits a tool call; the gateway executes it server-side through
+ * Ostra's tool pipeline and continues the conversation with the result.
+ */
+export interface FunctionToolAttachment {
+  /** Wire-safe function name ([a-zA-Z0-9_-]) the model calls. */
+  name: string;
+  description: string;
+  /** JSON Schema for the function arguments. */
+  parameters: Record<string, unknown>;
+  /** Ostra tool id this function maps back to (e.g. "ostra:noop"). */
+  toolId: string;
+}
+
+/** A tool call the model asked for (OpenAI `tool_calls` entry). */
+export interface ModelToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
 export interface GenerateOptions {
   /** Caller-owned abort signal (client disconnect, "stop" button, ...). */
   signal?: AbortSignal;
@@ -25,11 +47,17 @@ export interface GenerateOptions {
    */
   providerOverride?: { providerId: string; modelId: string };
   /**
-   * Stage 2: OpenRouter server-tool attachments. Must come from the tool
-   * registry and pass model/tool compatibility before reaching the gateway.
+   * Stage 2: OpenRouter server-tool attachments (`openrouter:*` types).
+   * Must come from the tool registry and pass model/tool compatibility
+   * before reaching the gateway. OpenRouter executes these server-side.
    */
   tools?: Array<{ type: string; parameters?: Record<string, unknown> }>;
-  /** Step budget for OpenRouter's server-tool agent loop (default 5, max 30). */
+  /**
+   * Stage 2: native tools exposed as functions the model may call. The
+   * gateway runs the tool-call loop (call → execute → continue → final).
+   */
+  functionTools?: FunctionToolAttachment[];
+  /** Tool budget: OpenRouter server-tool steps (1–30) and client-loop hops. */
   maxToolCalls?: number;
 }
 
@@ -37,6 +65,22 @@ export interface GenerateUsage {
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
+}
+
+/** Citation extracted from server-tool annotations (e.g. web search). */
+export interface ToolSource {
+  url: string;
+  title?: string;
+}
+
+/** What actually happened with tools during one generate call. */
+export interface ToolUsage {
+  /** Ostra tool ids executed through the client tool-call loop. */
+  clientToolCalls: string[];
+  /** Number of OpenRouter server-tool steps the provider reported. */
+  serverToolSteps: number;
+  /** Citations returned by server tools (web search/fetch). */
+  sources: ToolSource[];
 }
 
 export interface GenerateResult {
@@ -48,6 +92,8 @@ export interface GenerateResult {
   model: string;
   latencyMs: number;
   usage?: GenerateUsage;
+  /** Present when any tool activity occurred during the call. */
+  toolUsage?: ToolUsage;
 }
 
 export interface ModelProvider {

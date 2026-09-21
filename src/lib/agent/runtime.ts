@@ -15,7 +15,8 @@
  * or Telegram worker later.
  */
 import { callProvider } from "@/lib/providers";
-import type { ModelMessage } from "@/lib/model/types";
+import type { ModelMessage, ToolUsage } from "@/lib/model/types";
+import type { FunctionToolAttachment } from "@/lib/model/types";
 import { buildSystemPrompt } from "./persona";
 
 export interface RuntimeInput {
@@ -37,7 +38,12 @@ export interface RuntimeInput {
    * tool pipeline in @/lib/tools — never raw client input.
    */
   tools?: Array<{ type: string; parameters?: Record<string, unknown> }>;
-  /** Server-tool step budget for this request (1–30). */
+  /**
+   * Stage 2: validated native function tools. The gateway runs the full
+   * tool-call loop server-side; permission checks run with userApproved:false.
+   */
+  functionTools?: FunctionToolAttachment[];
+  /** Server-tool step budget / tool-loop hop budget for this request. */
   maxToolCalls?: number;
 }
 
@@ -48,6 +54,8 @@ export interface RuntimeResult {
   model: string;
   latencyMs: number;
   usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+  /** Present when any tool activity occurred during this turn. */
+  toolUsage?: ToolUsage;
 }
 
 /** Injects extra messages before the model call (memory, tools, ...). */
@@ -84,6 +92,7 @@ export class AgentRuntime {
       maxTokens: input.maxTokens,
       providerOverride: input.providerOverride,
       tools: input.tools,
+      functionTools: input.functionTools,
       maxToolCalls: input.maxToolCalls,
     });
 
@@ -94,6 +103,7 @@ export class AgentRuntime {
       model: result.model,
       latencyMs: result.latencyMs,
       usage: result.usage,
+      toolUsage: result.toolUsage,
     };
   }
 
