@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useModelPreference, useMemoryWriteApproval } from "@/lib/chat/model-preference";
+import { getModelPreference, useModelPreference, useMemoryWriteApproval } from "@/lib/chat/model-preference";
 import { cn } from "@/lib/utils";
 import { IconAlert, IconLayers } from "@/components/icons";
 
@@ -23,6 +23,8 @@ interface ModelsPayload {
   providers: CatalogProvider[];
   active: { mode: string; provider: string; model: string; keyPresent: boolean };
   defaultSelection: { provider: string; model: string };
+  /** Deliberate server-side workspace default from "Use as default" (null = env default). */
+  workspaceDefault?: { provider: string; model: string; role?: string } | null;
 }
 
 /**
@@ -51,6 +53,16 @@ export function ModelSelector({ className }: { className?: string }) {
         if (!cancelled) {
           setData(payload);
           setLoadFailed(false);
+          // The server's deliberate workspace default ("Use as default" in the
+          // Model Control Center) is the authority when the user has not picked
+          // a model in this browser. This keeps both controls in sync instead
+          // of each holding a hidden, conflicting selection.
+          if (payload.workspaceDefault) {
+            const local = getModelPreference();
+            if (!local) {
+              setPreference({ provider: payload.workspaceDefault.provider, model: payload.workspaceDefault.model });
+            }
+          }
         }
       } catch {
         if (!cancelled) setLoadFailed(true);
@@ -59,7 +71,7 @@ export function ModelSelector({ className }: { className?: string }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setPreference]);
 
   useEffect(() => {
     if (!open) return;

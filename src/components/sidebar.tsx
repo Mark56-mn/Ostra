@@ -21,9 +21,9 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: "conversations", label: "Conversations", href: "/", icon: IconChat },
   { id: "models", label: "Models", href: "/models", icon: IconCpu },
-  { id: "tasks", label: "Tasks", href: "/tasks", icon: IconList, soon: true },
-  { id: "memory", label: "Memory", href: "/memory", icon: IconLayers, soon: true },
-  { id: "settings", label: "Settings", href: "/settings", icon: IconSettings, soon: true },
+  { id: "tasks", label: "Tasks", href: "/tasks", icon: IconList },
+  { id: "memory", label: "Memory", href: "/memory", icon: IconLayers },
+  { id: "settings", label: "Settings", href: "/settings", icon: IconSettings },
 ];
 
 export function Sidebar({
@@ -213,7 +213,7 @@ export function Sidebar({
           </span>
         </div>
         <p className="mt-2 text-[11px] leading-snug text-zinc-600">
-          Prototype build. No tools, persistent memory or scheduling yet.
+          Tools run through Ostra&apos;s pipeline; memory and GitHub are live on the deployment with their connectors.
         </p>
       </div>
     </aside>

@@ -71,7 +71,7 @@ describe("model selection validation", async () => {
     setEnv({ OPENROUTER_API_KEY: "k" }); // gemini has no key
     resetProviderConfig();
     expectError(
-      () => validateModelSelection({ provider: "gemini", model: "gemini-2.5-flash" }),
+      () => validateModelSelection({ provider: "gemini", model: "gemini-flash-latest" }),
       "key_missing",
       409,
     );
@@ -107,7 +107,7 @@ describe("model selection validation", async () => {
 
     const selections = validateSelectionList([
       { provider: "openrouter", model: "nvidia/nemotron-3.5-lightning:free", role: "planner" },
-      { provider: "gemini", model: "gemini-2.5-flash", role: "coder" },
+      { provider: "gemini", model: "gemini-flash-latest", role: "coder" },
       { provider: "openrouter", model: "google/gemma-4-31b-it:free" },
     ]);
     assert.equal(selections.length, 3);
@@ -131,7 +131,7 @@ describe("model selection validation", async () => {
       () =>
         validateSelectionList([
           { provider: "openrouter", model: "nvidia/nemotron-3.5-lightning:free", role: "planner" },
-          { provider: "gemini", model: "gemini-2.5-flash", role: "planner" },
+          { provider: "gemini", model: "gemini-flash-latest", role: "planner" },
         ]),
       "duplicate_role",
     );
@@ -147,8 +147,8 @@ describe("model selection validation", async () => {
           { provider: "openrouter", model: "nvidia/nemotron-3.5-lightning:free" },
           { provider: "openrouter", model: "qwen/qwen3.8-27b:free" },
           { provider: "openrouter", model: "google/gemma-4-31b-it:free" },
-          { provider: "gemini", model: "gemini-2.5-flash" },
-          { provider: "gemini", model: "gemini-2.5-flash-lite" },
+          { provider: "gemini", model: "gemini-flash-latest" },
+          { provider: "gemini", model: "gemini-flash-lite-latest" },
           { provider: "gemini", model: "gemini-2.5-pro" },
         ]),
       "too_many_models",

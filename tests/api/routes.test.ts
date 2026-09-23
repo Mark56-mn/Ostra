@@ -73,7 +73,7 @@ describe("POST /api/chat", async () => {
     setEnv({ AI_PROVIDER: "openrouter", OPENROUTER_API_KEY: "k" });
     resetProviderConfig();
     const response = await route.POST(
-      jsonRequest("http://localhost/api/chat", { message: "hi", model: { provider: "gemini", model: "gemini-2.5-flash" } }),
+      jsonRequest("http://localhost/api/chat", { message: "hi", model: { provider: "gemini", model: "gemini-flash-latest" } }),
     );
     assert.equal(response.status, 409);
     const payload = (await response.json()) as { error: { code: string } };
@@ -239,7 +239,7 @@ describe("POST /api/models/select", async () => {
         name: "build feature",
         models: [
           { provider: "openrouter", model: "nvidia/nemotron-3.5-lightning:free", role: "planner" },
-          { provider: "gemini", model: "gemini-2.5-flash", role: "coder" },
+          { provider: "gemini", model: "gemini-flash-latest", role: "coder" },
         ],
       }),
     );
@@ -256,7 +256,7 @@ describe("POST /api/models/select", async () => {
       jsonRequest("http://localhost/api/models/select", {
         models: [
           { provider: "openrouter", model: "nvidia/nemotron-3.5-lightning:free", role: "planner" },
-          { provider: "gemini", model: "gemini-2.5-flash", role: "planner" },
+          { provider: "gemini", model: "gemini-flash-latest", role: "planner" },
         ],
       }),
     );

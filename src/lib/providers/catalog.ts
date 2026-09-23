@@ -99,9 +99,10 @@ const MODEL_CATALOG: Record<string, CatalogModel[]> = {
   ],
   gemini: [
     {
-      id: "gemini-2.5-flash",
-      name: "Gemini 2.5 Flash",
-      description: "Best price-performance Gemini for low-latency, high-volume tasks that require reasoning.",
+      id: "gemini-flash-latest",
+      name: "Gemini Flash (Latest)",
+      description:
+        "Stable alias tracking the current Gemini Flash — best price-performance for low-latency, high-volume tasks. Verified live against Google's model list on 2026-09-23.",
       contextWindow: 1_048_576,
       maxOutput: 65_536,
       tags: ["general", "reasoning", "speed"],
@@ -109,9 +110,10 @@ const MODEL_CATALOG: Record<string, CatalogModel[]> = {
       freeNote: "Free usage tier currently documented (rate-limited per model); limits vary by tier.",
     },
     {
-      id: "gemini-2.5-flash-lite",
-      name: "Gemini 2.5 Flash-Lite",
-      description: "The fastest, most budget-friendly multimodal model in the Gemini 2.5 family.",
+      id: "gemini-flash-lite-latest",
+      name: "Gemini Flash-Lite (Latest)",
+      description:
+        "Stable alias tracking the current Gemini Flash-Lite — fastest, most budget-friendly multimodal model. Verified live 2026-09-23.",
       contextWindow: 1_048_576,
       maxOutput: 65_536,
       tags: ["speed", "lightweight"],
@@ -119,14 +121,15 @@ const MODEL_CATALOG: Record<string, CatalogModel[]> = {
       freeNote: "Free usage tier currently documented (rate-limited per model).",
     },
     {
-      id: "gemini-2.5-pro",
-      name: "Gemini 2.5 Pro",
-      description: "The most advanced Gemini 2.5 model, for complex tasks with deep reasoning and coding.",
+      id: "gemini-3.1-pro-preview",
+      name: "Gemini 3.1 Pro (Preview)",
+      description:
+        "Most advanced current Gemini for complex reasoning and coding. Preview channel — availability can change. Verified live 2026-09-23.",
       contextWindow: 1_048_576,
       maxOutput: 65_536,
       tags: ["reasoning", "coding", "frontier"],
       free: false,
-      freeNote: "Gemini 2.5 Pro access is tied to paid tiers; free availability is not currently documented.",
+      freeNote: "Preview access may be tied to paid tiers; free availability is not documented.",
     },
   ],
   groq: [

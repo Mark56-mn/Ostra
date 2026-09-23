@@ -28,7 +28,7 @@ export function RoadmapPanel({
           <p className="ostra-label">{eyebrow}</p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-50">{title}</h1>
           <p className="mt-3 text-pretty-ostra text-sm leading-relaxed text-zinc-400">{summary}</p>
-          <span className="ostra-chip mt-4 border-ember-400/25 text-ember-300">Not in v0</span>
+          <span className="ostra-chip mt-4 border-ember-400/25 text-ember-300">Partially wired · see below</span>
         </header>
 
         <div className="grid gap-4 sm:grid-cols-2">

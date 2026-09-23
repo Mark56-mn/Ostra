@@ -55,7 +55,9 @@ export const PROVIDERS: ProviderDefinition[] = [
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
     keyEnvVar: "GEMINI_API_KEY",
     adapter: "gemini",
-    defaultModel: "gemini-2.5-flash",
+    // Stable alias: tracks the current Flash generation instead of aging
+    // pinned IDs (gemini-2.5-flash was retired for new keys 2026-09-23).
+    defaultModel: "gemini-flash-latest",
     freeTier: true,
     freeTierNote: "A Free usage tier is currently documented (rate-limited per model). Limits vary by model and tier — see ai.google.dev/gemini-api/docs/rate-limits.",
     docsUrl: "https://ai.google.dev/gemini-api/docs",

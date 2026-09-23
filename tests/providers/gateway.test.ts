@@ -277,7 +277,7 @@ describe("gemini adapter", async () => {
 
     const request = requests[0];
     assert.ok(request.url.includes("generativelanguage.googleapis.com"));
-    assert.ok(request.url.includes("models/gemini-2.5-flash:generateContent"));
+    assert.ok(request.url.includes("models/gemini-flash-latest:generateContent"));
     // The key travels in the URL — never in a browser-visible response.
     assert.ok(request.url.includes("key=gem-key"));
 

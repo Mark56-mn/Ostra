@@ -61,7 +61,7 @@ describe("datetime tool", () => {
 
 describe("auto-attach — provider capability gating", () => {
   it("gives tool-calling models the native tools", async () => {
-    const resolved = await resolveAutoTools("gemini", "gemini-2.5-flash");
+    const resolved = await resolveAutoTools("gemini", "gemini-flash-latest");
     assert.ok(resolved.functionTools.some((t) => t.toolId === "ostra:datetime"));
     assert.ok(resolved.functionTools.some((t) => t.toolId === "ostra:web_fetch"));
     assert.equal(resolved.serverTools.length, 0, "non-OpenRouter providers get no server tools");
@@ -82,7 +82,7 @@ describe("auto-attach — provider capability gating", () => {
   it("gives disabled native tools to nobody", async () => {
     toolConfigStore.setEnabled("ostra:datetime", false);
     try {
-      const resolved = await resolveAutoTools("gemini", "gemini-2.5-flash");
+      const resolved = await resolveAutoTools("gemini", "gemini-flash-latest");
       assert.ok(!resolved.functionTools.some((t) => t.toolId === "ostra:datetime"));
     } finally {
       toolConfigStore.setEnabled("ostra:datetime", true);

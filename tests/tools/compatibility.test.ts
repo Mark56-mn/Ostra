@@ -34,7 +34,7 @@ describe("model ↔ tool compatibility", () => {
   it("accepts Gemini models (tool calling verified)", () => {
     const result = checkModelToolCompatibility({
       providerId: "gemini",
-      modelId: "gemini-2.5-flash",
+      modelId: "gemini-flash-latest",
       tool: tool("openrouter:web_search"),
     });
     assert.equal(result.compatible, true);

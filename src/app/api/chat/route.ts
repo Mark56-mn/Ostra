@@ -15,6 +15,7 @@ import { jsonError, logServerError, noStoreHeaders } from "@/lib/api/errors";
 import { getClientKey, getRateLimiter } from "@/lib/api/rate-limit";
 import { parseChatRequest } from "@/lib/api/validation";
 import { ModelSelectionError, validateModelSelection } from "@/lib/model-selection";
+import { modelSelectionStore } from "@/lib/model-selection/store";
 import { resolveProviderConfig } from "@/lib/providers/config";
 import { ChatToolError, resolveChatTools } from "@/lib/tools/chat-tools";
 import { resolveAutoTools } from "@/lib/tools/chat-attach";
@@ -85,11 +86,21 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
   const override = (providerOverride as { override?: { providerId: string; modelId: string } }).override;
 
+  // A deliberate server-side workspace default (set via "Use as default" in
+  // the Model Control Center) applies when the request carries no per-request
+  // selection. This is the missing link that made provider switches appear to
+  // "snap back" to OpenRouter: the header preference and the server default
+  // were stored in separate places and /api/chat never consulted the latter.
+  const workspaceDefault = modelSelectionStore.getState().default;
+  const override2: { providerId: string; modelId: string } | null =
+    override ?? (workspaceDefault ? { providerId: workspaceDefault.provider, modelId: workspaceDefault.model } : null);
+
   // Stage 2: optional tool attachments, validated against the registry and
-  // the effective provider/model (override wins over env default).
+  // the effective provider/model (selection wins over env default).
   const config = resolveProviderConfig();
-  const effective = override
-    ? { providerId: override.providerId, modelId: override.modelId }
+  const hasDeliberateSelection = Boolean(override ?? workspaceDefault);
+  const effective = hasDeliberateSelection && override2
+    ? { providerId: override2.providerId, modelId: override2.modelId }
     : { providerId: config.provider?.id ?? "mock", modelId: config.provider?.model ?? "ostra-mock-1" };
   let toolAttachment: ReturnType<typeof resolveChatTools>;
   try {
@@ -137,7 +148,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       history,
       message,
       signal: request.signal,
-      ...(override ? { providerOverride: override } : {}),
+      // The deliberate selection (per-request or workspace default) overrides
+      // the env-configured provider for this turn.
+      ...(override2 ? { providerOverride: override2 } : {}),
       ...(mergedServerTools.length > 0 ? { tools: mergedServerTools, maxToolCalls: toolAttachment?.maxToolCalls } : {}),
       ...(hasFunctionTools ? { functionTools: allFunctionTools } : {}),
       ...(approvedToolIds.length > 0 ? { approvedToolIds } : {}),
@@ -150,9 +163,11 @@ export async function POST(request: Request): Promise<NextResponse> {
       provider: result.provider,
       mode: result.provider === "mock" ? "mock" : "live",
       latencyMs: result.latencyMs,
-      // Verification metadata: what the client asked for (null = server default),
-      // so a client can prove the selection was honored end-to-end.
-      requested: override ? { provider: override.providerId, model: override.modelId } : null,
+      // Verification metadata: what the client asked for, what the server
+      // resolved (null = env default), so any client can prove which provider
+      // answered and a selection can never silently snap back.
+      requested: hasDeliberateSelection && override2 ? { provider: override2.providerId, model: override2.modelId } : null,
+      selectionSource: override ? ("request" as const) : hasDeliberateSelection && override2 ? ("workspace" as const) : ("env" as const),
       // Tool transparency: which Ostra tools ran, how many provider-side server
       // steps happened, and citation URLs from web search/fetch.
       ...(result.toolUsage

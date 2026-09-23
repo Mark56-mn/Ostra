@@ -12,7 +12,7 @@ const { resolveChatTools, ChatToolError } = await import("@/lib/tools/chat-tools
 const { toolConfigStore } = await import("@/lib/tools/config");
 
 const OPENROUTER_MODEL = { providerId: "openrouter", modelId: "nvidia/nemotron-3.5-lightning:free" };
-const GEMINI_MODEL = { providerId: "gemini", modelId: "gemini-2.5-flash" };
+const GEMINI_MODEL = { providerId: "gemini", modelId: "gemini-flash-latest" };
 
 describe("chat tool attachments", () => {
   it("returns null when no tools are requested", () => {

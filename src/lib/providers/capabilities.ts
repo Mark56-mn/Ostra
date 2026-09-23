@@ -140,9 +140,10 @@ export const MODEL_CAPABILITIES: ModelCapabilitiesEntry[] = [
     verifiedFrom: "https://docs.api.nvidia.com/nim/reference/tools",
   },
   // --- Gemini (tool calling + vision + structured output documented; code execution is a
-  //     distinct API feature not verified per-model, so left unknown)
+  //     distinct API feature not verified per-model, so left unknown). The -latest aliases
+  //     track the current Flash generation; verified live 2026-09-23.
   {
-    modelId: "gemini-2.5-flash",
+    modelId: "gemini-flash-latest",
     providerId: "gemini",
     capabilities: {
       toolCalling: true,
@@ -151,11 +152,11 @@ export const MODEL_CAPABILITIES: ModelCapabilitiesEntry[] = [
       reasoning: true,
       streaming: true,
     },
-    verifiedAt: "2026-09-21",
+    verifiedAt: "2026-09-23",
     verifiedFrom: "https://ai.google.dev/api/caching#tool",
   },
   {
-    modelId: "gemini-2.5-flash-lite",
+    modelId: "gemini-flash-lite-latest",
     providerId: "gemini",
     capabilities: {
       toolCalling: true,
@@ -163,11 +164,11 @@ export const MODEL_CAPABILITIES: ModelCapabilitiesEntry[] = [
       vision: true,
       streaming: true,
     },
-    verifiedAt: "2026-09-21",
+    verifiedAt: "2026-09-23",
     verifiedFrom: "https://ai.google.dev/api/caching#tool",
   },
   {
-    modelId: "gemini-2.5-pro",
+    modelId: "gemini-3.1-pro-preview",
     providerId: "gemini",
     capabilities: {
       toolCalling: true,
@@ -176,7 +177,7 @@ export const MODEL_CAPABILITIES: ModelCapabilitiesEntry[] = [
       reasoning: true,
       streaming: true,
     },
-    verifiedAt: "2026-09-21",
+    verifiedAt: "2026-09-23",
     verifiedFrom: "https://ai.google.dev/api/caching#tool",
   },
   // --- Groq (tool-use documented for hosted models; per-model list not verified)

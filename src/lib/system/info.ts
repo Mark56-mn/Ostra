@@ -85,6 +85,8 @@ export interface ChatApiSuccess {
   latencyMs: number;
   /** Echo of the client's requested selection; null when the server default ran. */
   requested: { provider: string; model: string } | null;
+  /** Where the effective selection came from: request body, workspace default, or env config. */
+  selectionSource: "request" | "workspace" | "env";
   /** Ostra native tool ids that executed during the turn (empty = none). */
   toolsUsed: string[];
   /** Provider-reported server-tool steps (OpenRouter web search/fetch). */

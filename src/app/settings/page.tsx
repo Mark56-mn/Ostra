@@ -50,7 +50,7 @@ export default function SettingsPage() {
       <RoadmapPanel
         eyebrow="Module 04 · Control"
         title="Settings"
-        summary="Model configuration is environment-driven: no secrets can be typed into this UI, listed in the repository, or read by the browser. This view reports what the server resolved from its environment. Model selection now lives in the Model Control Center."
+        summary="This view reports what the server resolved from its environment right now. Per-request and workspace model selection live in the chat header and the Model Control Center — both override the environment default below."
         working={[
           "Multi-provider gateway: OpenRouter, NVIDIA NIM, Gemini, Groq, Mistral",
           "Environment-based provider switching — no code changes needed",

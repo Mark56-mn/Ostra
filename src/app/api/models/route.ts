@@ -10,6 +10,7 @@ import { noStoreHeaders } from "@/lib/api/errors";
 import { getAllModelCapabilities } from "@/lib/providers/capabilities";
 import { getModelCatalog } from "@/lib/providers";
 import { resolveProviderConfig } from "@/lib/providers/config";
+import { modelSelectionStore } from "@/lib/model-selection/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +35,10 @@ export async function GET(): Promise<NextResponse> {
       config.mode === "provider" && config.provider
         ? { provider: config.provider.id, model: config.provider.model }
         : { provider: "mock", model: "ostra-mock-1" },
+    // The deliberate workspace default ("Use as default" in this control
+    // center). /api/chat applies it whenever a request carries no explicit
+    // selection, so a provider switch here sticks everywhere.
+    workspaceDefault: modelSelectionStore.getState().default,
     timestamp: new Date().toISOString(),
   };
 
