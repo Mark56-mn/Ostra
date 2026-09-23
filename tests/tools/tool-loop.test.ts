@@ -7,7 +7,7 @@ import { describe, it } from "node:test";
 
 import { getToolDefinition } from "@/lib/tools/registry";
 import { executeTool, ToolError } from "@/lib/tools/service";
-import { executeNativeTool, formatDateTime, validateFetchUrl, WEB_FETCH_LIMITS } from "@/lib/tools/executor";
+import { executeNativeTool, validateFetchUrl, WEB_FETCH_LIMITS } from "@/lib/tools/executor";
 import { resolveAutoTools } from "@/lib/tools/chat-attach";
 import { checkModelToolCompatibility } from "@/lib/tools/compatibility";
 import { toolConfigStore } from "@/lib/tools/config";
