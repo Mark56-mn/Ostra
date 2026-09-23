@@ -30,11 +30,13 @@ export async function GET(): Promise<NextResponse> {
       keyPresent: Boolean(config.provider?.apiKey),
       configError: config.configError ?? null,
     },
-    // Which provider+model the server uses when a task does not select one.
+    // Legacy field name kept so existing clients keep working: what /api/chat
+    // uses when a task does not select one — the workspace default when one
+    // exists, mock mode otherwise. There is no hardcoded env-side default.
     defaultSelection:
       config.mode === "provider" && config.provider
         ? { provider: config.provider.id, model: config.provider.model }
-        : { provider: "mock", model: "ostra-mock-1" },
+        : modelSelectionStore.getState().default ?? { provider: "mock", model: "ostra-mock-1" },
     // The deliberate workspace default ("Use as default" in this control
     // center). /api/chat applies it whenever a request carries no explicit
     // selection, so a provider switch here sticks everywhere.

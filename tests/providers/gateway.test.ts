@@ -67,7 +67,7 @@ describe("openai-compatible gateway", async () => {
   const { resetProviderConfig } = await import("@/lib/providers/config");
 
   it("constructs a correct OpenAI-compatible request", async () => {
-    setEnv({ AI_PROVIDER: "openrouter", OPENROUTER_API_KEY: "test-key" });
+    setEnv({ AI_PROVIDER: "openrouter", AI_MODEL: "nvidia/nemotron-3.5-lightning:free", OPENROUTER_API_KEY: "test-key" });
     resetProviderConfig();
 
     const { requests } = captureFetch(() => new Response(
@@ -100,7 +100,7 @@ describe("openai-compatible gateway", async () => {
   });
 
   it("classifies HTTP errors and marks 429/5xx retryable", async () => {
-    setEnv({ AI_PROVIDER: "groq", GROQ_API_KEY: "k" });
+    setEnv({ AI_PROVIDER: "groq", AI_MODEL: "openai/gpt-oss-120b", GROQ_API_KEY: "k" });
     resetProviderConfig();
 
     captureFetch(() => new Response(JSON.stringify({ error: { message: "rate limited" } }), { status: 429 }));
@@ -117,7 +117,7 @@ describe("openai-compatible gateway", async () => {
   });
 
   it("treats 401 as a non-retryable auth failure without echoing the key", async () => {
-    setEnv({ AI_PROVIDER: "groq", GROQ_API_KEY: "secret-key-value" });
+    setEnv({ AI_PROVIDER: "groq", AI_MODEL: "openai/gpt-oss-120b", GROQ_API_KEY: "secret-key-value" });
     resetProviderConfig();
 
     captureFetch(() => new Response(JSON.stringify({ error: "bad key" }), { status: 401 }));
@@ -134,7 +134,7 @@ describe("openai-compatible gateway", async () => {
   });
 
   it("rejects when the provider key is missing", async () => {
-    setEnv({ AI_PROVIDER: "mistral" });
+    setEnv({ AI_PROVIDER: "mistral", AI_MODEL: "mistral-small-latest" });
     resetProviderConfig();
 
     await assert.rejects(
@@ -148,7 +148,7 @@ describe("openai-compatible gateway", async () => {
   });
 
   it("parses tolerant response shapes (OpenAI, plain text, object)", async () => {
-    setEnv({ AI_PROVIDER: "openrouter", OPENROUTER_API_KEY: "k" });
+    setEnv({ AI_PROVIDER: "openrouter", AI_MODEL: "nvidia/nemotron-3.5-lightning:free", OPENROUTER_API_KEY: "k" });
     resetProviderConfig();
 
     // 1. Standard OpenAI shape
@@ -169,7 +169,7 @@ describe("openai-compatible gateway", async () => {
   });
 
   it("rejects empty model responses", async () => {
-    setEnv({ AI_PROVIDER: "openrouter", OPENROUTER_API_KEY: "k" });
+    setEnv({ AI_PROVIDER: "openrouter", AI_MODEL: "nvidia/nemotron-3.5-lightning:free", OPENROUTER_API_KEY: "k" });
     resetProviderConfig();
 
     captureFetch(() => new Response(JSON.stringify({ choices: [{ message: { content: "" } }] }), { status: 200 }));
@@ -186,7 +186,7 @@ describe("openai-compatible gateway", async () => {
   it("times out and reports model_timeout", async () => {
     // MODEL_TIMEOUT_MS is clamped to a 5s floor by the config resolver, so
     // the stub must hang longer than that for the timeout to fire.
-    setEnv({ AI_PROVIDER: "openrouter", OPENROUTER_API_KEY: "k", MODEL_TIMEOUT_MS: "5000" });
+    setEnv({ AI_PROVIDER: "openrouter", AI_MODEL: "nvidia/nemotron-3.5-lightning:free", OPENROUTER_API_KEY: "k", MODEL_TIMEOUT_MS: "5000" });
     resetProviderConfig();
 
     stubFetch(hangingFetch(60_000, JSON.stringify({ choices: [{ message: { content: "late" } }] })));
@@ -201,7 +201,7 @@ describe("openai-compatible gateway", async () => {
   });
 
   it("propagates caller cancellation as model_cancelled", async () => {
-    setEnv({ AI_PROVIDER: "openrouter", OPENROUTER_API_KEY: "k", MODEL_TIMEOUT_MS: "5000" });
+    setEnv({ AI_PROVIDER: "openrouter", AI_MODEL: "nvidia/nemotron-3.5-lightning:free", OPENROUTER_API_KEY: "k", MODEL_TIMEOUT_MS: "5000" });
     resetProviderConfig();
 
     stubFetch(hangingFetch(500, JSON.stringify({ choices: [{ message: { content: "late" } }] })));
@@ -219,7 +219,7 @@ describe("openai-compatible gateway", async () => {
   });
 
   it("supports the per-request provider override (Stage 2)", async () => {
-    setEnv({ AI_PROVIDER: "openrouter", OPENROUTER_API_KEY: "or-key", GROQ_API_KEY: "groq-key" });
+    setEnv({ AI_PROVIDER: "openrouter", AI_MODEL: "nvidia/nemotron-3.5-lightning:free", OPENROUTER_API_KEY: "or-key", GROQ_API_KEY: "groq-key" });
     resetProviderConfig();
 
     const { requests } = captureFetch(() => new Response(
@@ -242,7 +242,7 @@ describe("openai-compatible gateway", async () => {
   });
 
   it("rejects an unregistered provider override", async () => {
-    setEnv({ AI_PROVIDER: "openrouter", OPENROUTER_API_KEY: "k" });
+    setEnv({ AI_PROVIDER: "openrouter", AI_MODEL: "nvidia/nemotron-3.5-lightning:free", OPENROUTER_API_KEY: "k" });
     resetProviderConfig();
 
     await assert.rejects(
@@ -260,7 +260,7 @@ describe("gemini adapter", async () => {
   const { resetProviderConfig } = await import("@/lib/providers/config");
 
   it("builds a native Gemini request with systemInstruction and role mapping", async () => {
-    setEnv({ AI_PROVIDER: "gemini", GEMINI_API_KEY: "gem-key" });
+    setEnv({ AI_PROVIDER: "gemini", AI_MODEL: "gemini-flash-latest", GEMINI_API_KEY: "gem-key" });
     resetProviderConfig();
 
     const { requests } = captureFetch(() => new Response(
@@ -292,7 +292,7 @@ describe("gemini adapter", async () => {
   });
 
   it("merges consecutive same-role messages for Gemini", async () => {
-    setEnv({ AI_PROVIDER: "gemini", GEMINI_API_KEY: "k" });
+    setEnv({ AI_PROVIDER: "gemini", AI_MODEL: "gemini-flash-latest", GEMINI_API_KEY: "k" });
     resetProviderConfig();
 
     const { requests } = captureFetch(() => new Response(
@@ -312,7 +312,7 @@ describe("gemini adapter", async () => {
   });
 
   it("surfaces Gemini API errors safely", async () => {
-    setEnv({ AI_PROVIDER: "gemini", GEMINI_API_KEY: "k" });
+    setEnv({ AI_PROVIDER: "gemini", AI_MODEL: "gemini-flash-latest", GEMINI_API_KEY: "k" });
     resetProviderConfig();
 
     captureFetch(() => new Response(
@@ -330,7 +330,7 @@ describe("gemini adapter", async () => {
   });
 
   it("rejects Gemini calls with no key", async () => {
-    setEnv({ AI_PROVIDER: "gemini" });
+    setEnv({ AI_PROVIDER: "gemini", AI_MODEL: "gemini-flash-latest" });
     resetProviderConfig();
 
     await assert.rejects(

@@ -16,6 +16,7 @@ const { resetProviderConfig } = await import("@/lib/providers/config");
 
 process.env.OPENROUTER_API_KEY = "sk-or-secret-value-123";
 process.env.AI_PROVIDER = "openrouter";
+process.env.AI_MODEL = "nvidia/nemotron-3.5-lightning:free";
 resetProviderConfig();
 
 const { getModelCatalog } = await import("@/lib/providers/catalog");
@@ -44,6 +45,7 @@ describe("secret hygiene", () => {
     // The shared bootstrap wipes model env per test — set it here.
     process.env.OPENROUTER_API_KEY = SECRET;
     process.env.AI_PROVIDER = "openrouter";
+    process.env.AI_MODEL = "nvidia/nemotron-3.5-lightning:free";
     resetProviderConfig();
 
     const catalog = getModelCatalog();

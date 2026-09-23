@@ -38,6 +38,8 @@ export function clearModelEnv(): void {
     "MODEL_MAX_TOKENS",
     "MODEL_TEMPERATURE",
     "OSTRA_MAX_MESSAGE_LENGTH",
+    "FIRECRAWL_API_KEY",
+    "MEM0_API_KEY",
   ];
   for (const key of providerVars) delete process.env[key];
 }

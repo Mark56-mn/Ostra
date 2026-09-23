@@ -127,6 +127,32 @@ const NATIVE_TOOLS: ToolDefinition[] = [
     requiresApproval: false,
   },
   {
+    id: "firecrawl.search",
+    name: "Firecrawl — Web Search",
+    provider: "firecrawl",
+    category: "research",
+    description:
+      "Search the web and return results with title, URL and description. Use for current information, facts about events after training, or finding pages to fetch. Results come from the Firecrawl search API; requires FIRECRAWL_API_KEY on the server.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "The web search query." },
+        limit: { type: "number", description: "Maximum results to return, 1-10 (default 5)." },
+      },
+      required: ["query"],
+    },
+    enabled: true,
+    // Not connection-based: the Firecrawl API key is checked at attach/execute
+    // time. requiresAuthentication: true would make every model incompatible
+    // via the compatibility gate regardless of key presence.
+    requiresAuthentication: false,
+    executionType: "native",
+    requiredCapability: "toolCalling",
+    riskLevel: "low",
+    permission: "read",
+    requiresApproval: false,
+  },
+  {
     id: "ostra:noop",
     name: "Ostra Noop",
     provider: "ostra",

@@ -27,6 +27,7 @@ function jsonResponse(body: unknown): Response {
 describe("gateway tool attachments", () => {
   it("includes tools and max_tool_calls in the request body for OpenRouter", async () => {
     process.env.AI_PROVIDER = "openrouter";
+    process.env.AI_MODEL = "nvidia/nemotron-3.5-lightning:free";
     process.env.OPENROUTER_API_KEY = "sk-test-secret-xyz";
     const { resetProviderConfig } = await import("@/lib/providers/config");
     const { callProvider } = await import("@/lib/providers/gateway");
@@ -52,6 +53,7 @@ describe("gateway tool attachments", () => {
 
   it("omits tools when none are attached", async () => {
     process.env.AI_PROVIDER = "openrouter";
+    process.env.AI_MODEL = "nvidia/nemotron-3.5-lightning:free";
     process.env.OPENROUTER_API_KEY = "sk-test-secret-xyz";
     const { resetProviderConfig } = await import("@/lib/providers/config");
     const { callProvider } = await import("@/lib/providers/gateway");
@@ -71,6 +73,7 @@ describe("gateway tool attachments", () => {
 
   it("clamps max_tool_calls to the API maximum of 30", async () => {
     process.env.AI_PROVIDER = "openrouter";
+    process.env.AI_MODEL = "nvidia/nemotron-3.5-lightning:free";
     process.env.OPENROUTER_API_KEY = "sk-test-secret-xyz";
     const { resetProviderConfig } = await import("@/lib/providers/config");
     const { callProvider } = await import("@/lib/providers/gateway");

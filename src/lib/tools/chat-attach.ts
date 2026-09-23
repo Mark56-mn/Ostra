@@ -23,6 +23,16 @@ import { toolConfigStore } from "./config";
 /** Native tools the model may call (executed by Ostra, permission-gated). */
 const NATIVE_TOOL_IDS = ["ostra:datetime", "ostra:web_fetch"] as const;
 
+/**
+ * Native tools attached only when their server-side credential is present.
+ * The Firecrawl API key is checked per request so the tool appears exactly
+ * when it can actually run — and never leaks whether the key exists beyond
+ * the tool being available.
+ */
+const CREDENTIAL_GATED_NATIVE_TOOLS: Array<{ id: string; envVar: string }> = [
+  { id: "firecrawl.search", envVar: "FIRECRAWL_API_KEY" },
+];
+
 /** Integration operations the model may call when execution-ready (read-only). */
 const INTEGRATION_TOOL_IDS = ["github.list_repositories", "mem0.search_memory"] as const;
 
@@ -47,6 +57,16 @@ export async function resolveAutoTools(providerId: string, modelId: string): Pro
   for (const id of NATIVE_TOOL_IDS) {
     const tool = getToolDefinition(id);
     if (!tool || !toolConfigStore.isEnabled(tool)) continue;
+    functionTools.push(toFunctionAttachment(tool));
+  }
+
+  // Credential-gated native tools: attached only when their key exists on
+  // the server, so the model is never offered a tool that cannot run.
+  for (const { id, envVar } of CREDENTIAL_GATED_NATIVE_TOOLS) {
+    const tool = getToolDefinition(id);
+    if (!tool || !toolConfigStore.isEnabled(tool)) continue;
+    const raw = process.env[envVar];
+    if (typeof raw !== "string" || raw.trim().length === 0) continue;
     functionTools.push(toFunctionAttachment(tool));
   }
 

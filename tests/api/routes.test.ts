@@ -59,7 +59,7 @@ describe("POST /api/chat", async () => {
   });
 
   it("rejects a non-allowlisted model selection without calling any provider", async () => {
-    setEnv({ AI_PROVIDER: "openrouter", OPENROUTER_API_KEY: "k" });
+    setEnv({ AI_PROVIDER: "openrouter", AI_MODEL: "nvidia/nemotron-3.5-lightning:free", OPENROUTER_API_KEY: "k" });
     resetProviderConfig();
     const response = await route.POST(
       jsonRequest("http://localhost/api/chat", { message: "hi", model: { provider: "openrouter", model: "openai/gpt-4o" } }),
@@ -70,7 +70,7 @@ describe("POST /api/chat", async () => {
   });
 
   it("rejects a selection whose provider has no configured key (409)", async () => {
-    setEnv({ AI_PROVIDER: "openrouter", OPENROUTER_API_KEY: "k" });
+    setEnv({ AI_PROVIDER: "openrouter", AI_MODEL: "nvidia/nemotron-3.5-lightning:free", OPENROUTER_API_KEY: "k" });
     resetProviderConfig();
     const response = await route.POST(
       jsonRequest("http://localhost/api/chat", { message: "hi", model: { provider: "gemini", model: "gemini-flash-latest" } }),
@@ -81,7 +81,7 @@ describe("POST /api/chat", async () => {
   });
 
   it("rejects a malformed selection shape", async () => {
-    setEnv({ AI_PROVIDER: "openrouter", OPENROUTER_API_KEY: "k" });
+    setEnv({ AI_PROVIDER: "openrouter", AI_MODEL: "nvidia/nemotron-3.5-lightning:free", OPENROUTER_API_KEY: "k" });
     resetProviderConfig();
     const response = await route.POST(
       jsonRequest("http://localhost/api/chat", { message: "hi", model: "nvidia/nemotron-3.5-lightning:free" }),
@@ -141,7 +141,7 @@ describe("GET /api/health", async () => {
   });
 
   it("reports degraded when a provider is configured without a key", async () => {
-    setEnv({ AI_PROVIDER: "nvidia" });
+    setEnv({ AI_PROVIDER: "nvidia", AI_MODEL: "nvidia/nemotron-3.5-lightning-30b-a3b" });
     resetProviderConfig();
     const response = await route.GET();
     const payload = (await response.json()) as { status: string; keyPresent: boolean };
@@ -164,7 +164,7 @@ describe("GET /api/models", async () => {
   const { resetProviderConfig } = await import("@/lib/providers/config");
 
   it("serves the allowlisted catalog with key presence but no key values", async () => {
-    setEnv({ AI_PROVIDER: "openrouter", OPENROUTER_API_KEY: "sk-or-secret-123" });
+    setEnv({ AI_PROVIDER: "openrouter", AI_MODEL: "nvidia/nemotron-3.5-lightning:free", OPENROUTER_API_KEY: "sk-or-secret-123" });
     resetProviderConfig();
     const response = await route.GET();
     assert.equal(response.status, 200);
@@ -189,6 +189,24 @@ describe("GET /api/models", async () => {
     const payload = (await response.json()) as { active: { mode: string }; defaultSelection: { provider: string } };
     assert.equal(payload.active.mode, "mock");
     assert.equal(payload.defaultSelection.provider, "mock");
+  });
+
+  it("exposes the deliberate workspace default as the fallback selection", async () => {
+    const selectRoute = await import("@/app/api/models/select/route");
+    setEnv({ OPENROUTER_API_KEY: "k" });
+    resetProviderConfig();
+    await selectRoute.POST(
+      jsonRequest("http://localhost/api/models/select", { provider: "openrouter", model: "qwen/qwen3.8-27b:free" }),
+    );
+    const response = await route.GET();
+    const payload = (await response.json()) as {
+      defaultSelection: { provider: string; model: string };
+      workspaceDefault: { provider: string; model: string } | null;
+    };
+    assert.equal(payload.workspaceDefault?.provider, "openrouter");
+    assert.equal(payload.workspaceDefault?.model, "qwen/qwen3.8-27b:free");
+    assert.equal(payload.defaultSelection.provider, "openrouter");
+    assert.equal(payload.defaultSelection.model, "qwen/qwen3.8-27b:free");
   });
 });
 

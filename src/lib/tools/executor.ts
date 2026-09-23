@@ -208,7 +208,7 @@ export interface NativeExecutionResult {
   code?: "executed" | "unsupported";
 }
 
-/** In-process execution for native tools: noop, datetime, web_fetch. */
+/** In-process execution for native tools: noop, datetime, web_fetch, firecrawl.search. */
 export async function executeNativeTool(tool: ToolDefinition, args: Record<string, unknown>): Promise<NativeExecutionResult> {
   if (tool.id === "ostra:noop") {
     return { ok: true, output: `echo: ${String(args.echo ?? "")}`, code: "executed" };
@@ -218,6 +218,9 @@ export async function executeNativeTool(tool: ToolDefinition, args: Record<strin
   }
   if (tool.id === "ostra:web_fetch") {
     return fetchPublicPage(args);
+  }
+  if (tool.id === "firecrawl.search") {
+    return firecrawlWebSearch(args);
   }
   return { ok: false, output: "Native execution is not implemented for this tool.", code: "unsupported" };
 }
@@ -406,6 +409,96 @@ export function extractReadableText(html: string, contentType: string): string {
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+// ---------------------------------------------------------------------------
+// firecrawl.search — web search via the Firecrawl v2 API (native adapter)
+// ---------------------------------------------------------------------------
+
+/** Hard limits so a search can never become a server-side network hazard. */
+export const FIRECRAWL_SEARCH_LIMITS = {
+  maxLimit: 10,
+  maxQueryChars: 400,
+  timeoutMs: 20_000,
+  maxOutputChars: 8_000,
+} as const;
+
+/** Wire shape of Firecrawl's v2 search response (docs.firecrawl.dev). */
+interface FirecrawlSearchResponse {
+  success?: unknown;
+  error?: unknown;
+  data?: { web?: Array<{ title?: unknown; description?: unknown; url?: unknown }> };
+}
+
+/** Read FIRECRAWL_API_KEY for the Authorization header only — never output. */
+function readFirecrawlApiKey(): string | null {
+  const raw = process.env.FIRECRAWL_API_KEY;
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Search the web through Firecrawl's v2 search API. The key lives only in
+ * the Authorization header; every failure becomes a structured, secret-free
+ * result the model can read instead of a thrown error.
+ */
+export async function firecrawlWebSearch(args: Record<string, unknown>): Promise<NativeExecutionResult> {
+  const query = typeof args.query === "string" ? args.query.trim() : "";
+  if (!query) {
+    return { ok: false, output: JSON.stringify({ ok: false, error: "invalid_query", message: "A `query` string is required." }) };
+  }
+  if (query.length > FIRECRAWL_SEARCH_LIMITS.maxQueryChars) {
+    return { ok: false, output: JSON.stringify({ ok: false, error: "invalid_query", message: `The query must be ${FIRECRAWL_SEARCH_LIMITS.maxQueryChars} characters or fewer.` }) };
+  }
+  const rawLimit = typeof args.limit === "number" && Number.isFinite(args.limit) ? Math.trunc(args.limit) : 5;
+  const limit = Math.min(FIRECRAWL_SEARCH_LIMITS.maxLimit, Math.max(1, rawLimit));
+
+  const apiKey = readFirecrawlApiKey();
+  if (!apiKey) {
+    return { ok: false, output: JSON.stringify({ ok: false, error: "key_missing", message: "Firecrawl search is not configured: no FIRECRAWL_API_KEY on the server." }) };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FIRECRAWL_SEARCH_LIMITS.timeoutMs);
+  try {
+    const response = await fetch("https://api.firecrawl.dev/v2/search", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ query, limit, sources: ["web"], timeout: FIRECRAWL_SEARCH_LIMITS.timeoutMs }),
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return { ok: false, output: JSON.stringify({ ok: false, error: "search_http_error", message: `The Firecrawl search API responded with HTTP ${response.status}.` }) };
+    }
+    const payload = (await response.json()) as FirecrawlSearchResponse;
+    if (!payload || payload.success !== true || !payload.data || !Array.isArray(payload.data.web)) {
+      return { ok: false, output: JSON.stringify({ ok: false, error: "search_failed", message: "The Firecrawl search API returned an unexpected response." }) };
+    }
+    const results = payload.data.web.slice(0, limit).map((entry) => ({
+      title: typeof entry.title === "string" ? entry.title : "",
+      url: typeof entry.url === "string" ? entry.url : "",
+      description: typeof entry.description === "string" ? entry.description : "",
+    }));
+    const body = JSON.stringify({ ok: true, query, count: results.length, results });
+    return {
+      ok: true,
+      output: body.length > FIRECRAWL_SEARCH_LIMITS.maxOutputChars ? `${body.slice(0, FIRECRAWL_SEARCH_LIMITS.maxOutputChars)}…[truncated]` : body,
+      code: "executed",
+    };
+  } catch (error) {
+    if (isAbortError(error)) {
+      return { ok: false, output: JSON.stringify({ ok: false, error: "search_timeout", message: `The search did not respond within ${FIRECRAWL_SEARCH_LIMITS.timeoutMs / 1000}s.` }) };
+    }
+    const detail = error instanceof Error ? error.name : String(error);
+    return { ok: false, output: JSON.stringify({ ok: false, error: "search_failed", message: `The Firecrawl search could not be completed (${detail}).` }) };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ---------------------------------------------------------------------------

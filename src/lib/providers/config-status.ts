@@ -66,7 +66,7 @@ export function getProviderStatusSummary(): ProviderStatusSummary {
       id: definition.id,
       name: definition.name,
       adapter: definition.adapter,
-      model: active && config.provider ? config.provider.model : definition.defaultModel,
+      model: active && config.provider ? config.provider.model : "",
       active,
       keyEnvVar: definition.keyEnvVar,
       keyPresent: keyPresentFor(definition),

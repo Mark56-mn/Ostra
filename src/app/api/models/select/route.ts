@@ -96,7 +96,7 @@ export async function GET(): Promise<NextResponse> {
       serverDefault:
         config.mode === "provider" && config.provider
           ? { provider: config.provider.id, model: config.provider.model }
-          : { provider: "mock", model: "ostra-mock-1" },
+          : workspace.default ?? { provider: "mock", model: "ostra-mock-1" },
       timestamp: new Date().toISOString(),
     },
     { headers: noStoreHeaders() },

@@ -19,8 +19,6 @@ export interface ProviderDefinition {
   keyEnvVar: string;
   /** Which adapter handles this provider's request/response shape. */
   adapter: ProviderAdapterType;
-  /** Default model ID for this provider (used when AI_MODEL is not set). */
-  defaultModel: string;
   /** Whether this provider currently has a documented free tier. */
   freeTier: boolean;
   /** Short note about the free tier (shown in settings). */

@@ -52,6 +52,7 @@ interface ModelsPayload {
   providers: CatalogProvider[];
   capabilities: CapabilityEntry[];
   active: { mode: string; provider: string; model: string; keyPresent: boolean; configError: string | null };
+  /** Effective fallback selection: the deliberate workspace default when set, mock otherwise. */
   defaultSelection: { provider: string; model: string };
   timestamp: string;
 }

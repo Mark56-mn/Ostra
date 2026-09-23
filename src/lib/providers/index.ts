@@ -11,7 +11,6 @@ export {
   getModelCatalog,
   getModelsForProvider,
   isModelAllowed,
-  getDefaultCatalogModel,
 } from "./catalog";
 export type { CatalogModel, CatalogProvider } from "./catalog";
 export type { ProviderDefinition, ProviderHealthStatus, ResolvedProvider, ProviderAdapterType } from "./types";

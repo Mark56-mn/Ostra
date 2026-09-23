@@ -102,19 +102,17 @@ The gateway automatically:
 
 ### Default models
 
-Each provider has a default model **verified against current provider documentation on 2026-09-20**.
-Override with `AI_MODEL`:
+There are **no hardcoded default models**. Model IDs age quickly, and a stale default silently
+breaks an otherwise-correct configuration. Instead:
 
-| Provider | Default Model |
-| --- | --- |
-| OpenRouter | `nvidia/nemotron-3.5-lightning:free` |
-| Groq | `openai/gpt-oss-120b` |
-| Mistral | `mistral-small-latest` |
-| NVIDIA | `nvidia/nemotron-3.5-lightning-30b-a3b` |
-| Gemini | `gemini-2.5-flash` |
+- When `AI_PROVIDER` is set, `AI_MODEL` is **required** — omitting it is a configuration error
+  (`AI_MODEL is required when AI_PROVIDER=…`), never a silent guess.
+- The everyday fallback is the **deliberate workspace default** set in the `/models` Model Control
+  Center ("Use as default"). `/api/chat` applies it whenever a request carries no explicit
+  selection; with no workspace default and no env config, Ostra runs in mock mode.
 
-Model IDs age quickly. If a default stops working, set `AI_MODEL` to a currently documented ID —
-no code change needed. The `/models` Model Control Center lists the current allowlisted catalog.
+Set `AI_MODEL` to a model ID from the provider's current documentation. The `/models` page lists
+the allowlisted catalog.
 
 ### Legacy compatibility
 
@@ -142,7 +140,7 @@ cp env.example .env.local
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `AI_PROVIDER` | no | Active provider: `openrouter`, `groq`, `mistral`, `nvidia`, `gemini`, `mock` |
-| `AI_MODEL` | no | Model ID override (each provider has a default) |
+| `AI_MODEL` | required when `AI_PROVIDER` is set | Model ID from the provider's current docs (no hardcoded default) |
 | `AI_API_KEY` | no | Generic key override (provider-specific keys take priority) |
 | `AI_BASE_URL` | no | Base URL override (each provider has a default) |
 

@@ -16,7 +16,7 @@
  * - Groq: models read from console.groq.com/docs/models
  */
 import { getProviderStatusSummary } from "./config-status";
-import { PROVIDERS, getProviderDefinition } from "./registry";
+import { PROVIDERS } from "./registry";
 
 export interface CatalogModel {
   id: string;
@@ -209,11 +209,4 @@ export function isModelAllowed(providerId: string, modelId: string): boolean {
 
 export function getProviderModelCount(providerId: string): number {
   return (MODEL_CATALOG[providerId] ?? []).length;
-}
-
-/** The verified default model for a provider — the model the UI preselects. */
-export function getDefaultCatalogModel(providerId: string): CatalogModel | null {
-  const definition = getProviderDefinition(providerId);
-  if (!definition) return null;
-  return (MODEL_CATALOG[providerId] ?? []).find((m) => m.id === definition.defaultModel) ?? null;
 }

@@ -65,7 +65,20 @@ export function resolveProviderConfig(): ProviderConfig {
     }
 
     const apiKey = readEnv("AI_API_KEY") ?? readEnv(definition.keyEnvVar);
-    const model = readEnv("AI_MODEL") ?? definition.defaultModel;
+    // No silent model fallback: a provider selected without an explicit
+    // AI_MODEL is a configuration error, never a guess from a hardcoded
+    // default that can silently age out of the provider's catalog.
+    const model = readEnv("AI_MODEL");
+    if (!model) {
+      cached = {
+        mode: "mock",
+        provider: null,
+        legacyApiUrl: null,
+        legacyApiKey: null,
+        configError: `AI_MODEL is required when AI_PROVIDER="${providerId}" is set. Set AI_MODEL to a model ID from the provider's current documentation — there is no hardcoded default.`,
+      };
+      return cached;
+    }
     const baseUrl = readEnv("AI_BASE_URL") ?? definition.baseUrl;
 
     cached = {
@@ -194,7 +207,7 @@ export function getAllProviderStatuses(): ProviderHealthStatus[] {
       id: def.id,
       name: def.name,
       provider: def.name,
-      model: isActive && config.provider ? config.provider.model : def.defaultModel,
+      model: isActive && config.provider ? config.provider.model : "",
       configured: isActive,
       keyPresent,
       adapter: def.adapter,

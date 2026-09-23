@@ -21,6 +21,7 @@ describe("health payload security", async () => {
   it("never includes any key value in the payload", () => {
     const payload = healthWithEnv({
       AI_PROVIDER: "openrouter",
+      AI_MODEL: "nvidia/nemotron-3.5-lightning:free",
       OPENROUTER_API_KEY: "sk-or-super-secret-value-123",
     });
     const serialized = JSON.stringify(payload);
@@ -34,6 +35,7 @@ describe("health payload security", async () => {
   it("serializes with no secret-bearing field names at all", () => {
     const payload = healthWithEnv({
       AI_PROVIDER: "gemini",
+      AI_MODEL: "gemini-flash-latest",
       GEMINI_API_KEY: "AIza-secret",
       MISTRAL_API_KEY: "mistral-secret",
     });
@@ -62,7 +64,7 @@ describe("health payload security", async () => {
   });
 
   it("reports degraded — not ok — when the provider key is missing", () => {
-    const payload = healthWithEnv({ AI_PROVIDER: "nvidia" });
+    const payload = healthWithEnv({ AI_PROVIDER: "nvidia", AI_MODEL: "nvidia/nemotron-3.5-lightning-30b-a3b" });
     assert.equal(payload.mode, "provider");
     assert.equal(payload.keyPresent, false);
     assert.equal(payload.status, "degraded");
@@ -78,6 +80,7 @@ describe("health payload security", async () => {
   it("lists per-provider key presence without values", () => {
     const payload = healthWithEnv({
       AI_PROVIDER: "groq",
+      AI_MODEL: "openai/gpt-oss-120b",
       GROQ_API_KEY: "gsk-secret",
       GEMINI_API_KEY: "also-secret",
     });

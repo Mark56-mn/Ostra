@@ -26,6 +26,7 @@ describe("provider configuration routing", () => {
 
   it("resolves an explicit AI_PROVIDER with its key env var", () => {
     process.env.AI_PROVIDER = "openrouter";
+    process.env.AI_MODEL = "nvidia/nemotron-3.5-lightning:free";
     process.env.OPENROUTER_API_KEY = "test-key-123";
     resetProviderConfig();
     const config = resolveProviderConfig();
@@ -37,6 +38,7 @@ describe("provider configuration routing", () => {
 
   it("prefers AI_API_KEY over the provider-specific key variable", () => {
     process.env.AI_PROVIDER = "groq";
+    process.env.AI_MODEL = "openai/gpt-oss-120b";
     process.env.AI_API_KEY = "generic-key";
     process.env.GROQ_API_KEY = "provider-key";
     resetProviderConfig();
@@ -46,6 +48,7 @@ describe("provider configuration routing", () => {
 
   it("flags a configured provider without a key (does not fall back to mock)", () => {
     process.env.AI_PROVIDER = "nvidia";
+    process.env.AI_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b";
     resetProviderConfig();
     const config = resolveProviderConfig();
     assert.equal(config.mode, "provider");
@@ -86,6 +89,20 @@ describe("provider configuration routing", () => {
     assert.equal(JSON.stringify(summary).includes("sk-"), false);
   });
 
+  it("requires AI_MODEL when AI_PROVIDER is set (no hardcoded default)", () => {
+    process.env.AI_PROVIDER = "openrouter";
+    process.env.OPENROUTER_API_KEY = "k";
+    resetProviderConfig();
+    const config = resolveProviderConfig();
+    assert.ok(config.configError, "expected a config error");
+    assert.match(config.configError, /AI_MODEL is required/);
+    assert.equal(config.mode, "mock");
+    assert.equal(config.provider, null);
+
+    const health = getProviderHealthStatus();
+    assert.equal(health.id, "error");
+  });
+
   it("supports legacy MODEL_MODE=http + MODEL_API_URL as a custom provider", () => {
     process.env.MODEL_MODE = "http";
     process.env.MODEL_API_URL = "https://kaggle-tunnel.example/v1/chat/completions";
@@ -118,6 +135,7 @@ describe("provider configuration routing", () => {
 
   it("clamps MODEL_TIMEOUT_MS into a sane range", () => {
     process.env.AI_PROVIDER = "openrouter";
+    process.env.AI_MODEL = "nvidia/nemotron-3.5-lightning:free";
     process.env.OPENROUTER_API_KEY = "k";
     process.env.MODEL_TIMEOUT_MS = "1";
     resetProviderConfig();
@@ -134,6 +152,7 @@ describe("provider configuration routing", () => {
 
   it("honours MODEL_MAX_TOKENS and MODEL_TEMPERATURE", () => {
     process.env.AI_PROVIDER = "gemini";
+    process.env.AI_MODEL = "gemini-flash-latest";
     process.env.GEMINI_API_KEY = "k";
     process.env.MODEL_MAX_TOKENS = "2048";
     process.env.MODEL_TEMPERATURE = "0.2";
