@@ -620,6 +620,155 @@ Those can be implemented later with explicit confirmation/permission policies.
 
 ---
 
+# 16A. The existing Ostra UI must become truthful and functional
+
+The current website contains pages/sections such as:
+
+- Tools
+- Memory
+- Settings
+- Model/Control Center
+- other capability/configuration pages
+
+Some currently display placeholder states such as **"Coming Soon"** even though the underlying integration/runtime work is now being implemented.
+
+Do NOT leave the UI claiming that implemented capabilities are unavailable.
+
+## Required UI behavior
+
+After this task:
+
+1. The **Tools** area must show the tools that Ostra actually has registered and their real runtime status.
+2. The **Memory** area must no longer be a fake/placeholder "Coming Soon" experience if Mem0 is successfully configured and implemented.
+3. The **Settings** area must expose the real model/provider and integration configuration state that the runtime actually uses.
+4. The UI must distinguish:
+   - configured;
+   - connected/credential detected;
+   - adapter implemented;
+   - executable;
+   - tested/ready;
+   - unavailable/error.
+5. Never show a tool as available merely because an ENV variable exists.
+6. Never show "Coming Soon" for a capability that has actually been implemented and tested.
+7. If a capability is not yet implemented, show an honest status such as:
+   - Not implemented
+   - Credential missing
+   - Unavailable
+   - Error
+   rather than pretending it works.
+8. Do not create fake memory entries, fake tool execution, or fake integration status just to make the UI look complete.
+
+## Mem0 is a required target
+
+Mem0 is one of the connected integrations and is specifically intended to become Ostra's persistent memory capability.
+
+If the Mem0 credential is available:
+
+- implement the Mem0 adapter;
+- register its real memory tools;
+- expose them to compatible models;
+- allow the model to save/search/retrieve memory through the tool executor;
+- update the Memory page to reflect the actual state;
+- prove at least one real memory write and one real memory retrieval if the service/API permits it.
+
+Example intended capability:
+
+```
+User:
+"Remember that my AI project is called Ostra."
+
+Model:
+→ memory.save
+
+Mem0:
+→ stores memory
+
+Later:
+
+User:
+"What is my AI project called?"
+
+Model:
+→ memory.search
+
+Mem0:
+→ returns relevant memory
+
+Model:
+→ answers "Ostra"
+```
+
+Do not hard-code "Ostra" as a fake memory result.
+
+If Mem0 is blocked, follow the fail-forward rule: document the exact blocker and move to the next independent integration. Do not spend the entire execution budget repeatedly trying to fix Mem0.
+
+## AI access to Ostra's own capability pages
+
+The runtime capability registry and the UI/control state must stay synchronized.
+
+The AI/runtime must be able to obtain the same **safe, non-secret capability metadata** that the Settings/Tools/Memory pages display.
+
+For example:
+
+```
+Tools:
+  Firecrawl Search — READY
+  GitHub Read — READY
+  Mem0 Search — READY
+
+Memory:
+  Mem0 — READY
+
+Settings:
+  Selected provider — user selected
+  Selected model — user selected
+```
+
+Do not expose secrets through this metadata.
+
+The goal is that Ostra does not have one reality in the UI and a different reality in the server runtime.
+
+## AI should be able to inspect Ostra capability state
+
+Where the existing architecture has server-side routes/services for capability metadata, make that metadata available to the runtime/tool layer so the AI can determine what Ostra currently has access to.
+
+The AI must be able to reason from safe metadata such as:
+
+- which tools are enabled;
+- which integrations are ready;
+- which memory system is active;
+- which provider/model is currently selected;
+- which capabilities are unavailable.
+
+This does NOT mean giving the AI control of the Settings UI or allowing it to change configuration automatically.
+
+Do not expose secret values.
+
+## Important distinction
+
+"AI can see a capability" and "AI can execute a capability" are different.
+
+A capability is only executable when:
+
+```
+registered
++
+credential available
++
+adapter implemented
++
+permission allowed
++
+provider/model compatible
++
+real execution verified
+```
+
+Only then mark it READY.
+
+---
+
+
 # 17. Do not redesign the website
 
 Do NOT spend this task on:
