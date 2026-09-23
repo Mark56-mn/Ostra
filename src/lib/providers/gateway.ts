@@ -185,6 +185,21 @@ async function callOpenAICompatible(
   // add to this list.
   const approved = new Set(options.approvedToolIds ?? []);
 
+  // Safe, secret-free execution trace for debugging the tool loop. Enable
+  // with OSTRA_TOOL_DEBUG=1; never logs keys, tokens, or full results.
+  const debug = readEnv("OSTRA_TOOL_DEBUG") === "1";
+  const trace = (event: string, data: Record<string, unknown> = {}): void => {
+    if (!debug) return;
+    console.log(`[ostra:tool-loop] ${event}`, JSON.stringify(data));
+  };
+
+  trace("request", {
+    provider: provider.id,
+    model: provider.model,
+    serverTools: serverTools.map((t) => t.type),
+    functionTools: functionTools.map((t) => t.name),
+  });
+
   for (let hop = 0; hop <= maxHops; hop++) {
     const raw = await postChatCompletion(provider, wire, options, {
       serverTools,
@@ -208,6 +223,7 @@ async function callOpenAICompatible(
           retryable: true,
         });
       }
+      trace("final_response", { hops: hop + 1, toolsUsed: executedToolIds, contentBytes: parsed.content.length });
       return finishResult(provider, options, parsed.content, startedAt, {
         executedToolIds,
         serverToolSteps,
@@ -234,6 +250,7 @@ async function callOpenAICompatible(
     for (const call of parsed.toolCalls) {
       const attachment = functionTools.find((t) => t.name === call.name);
       if (!attachment) {
+        trace("tool_call_rejected", { name: call.name, reason: "not_attached" });
         toolMsgs.push({
           role: "tool",
           tool_call_id: call.id,
@@ -242,10 +259,13 @@ async function callOpenAICompatible(
         continue;
       }
       executedToolIds.push(attachment.toolId);
+      trace("tool_call_received", { name: call.name, toolId: attachment.toolId, argsBytes: call.arguments.length });
       const outcome = await runOstraTool(attachment, call.arguments, { userApproved: approved.has(attachment.toolId) });
+      trace("tool_result_returned", { toolId: attachment.toolId, executed: outcome.includes('"state":"executed"'), bytes: outcome.length });
       toolMsgs.push({ role: "tool", tool_call_id: call.id, content: outcome });
     }
     wire = [...wire, assistantMsg, ...toolMsgs];
+    trace("continuation", { hop: hop + 1, wireMessages: wire.length });
 
     // Budget exhausted with the model still calling tools: return what we
     // have plus an honest note — never fabricate a completed answer.

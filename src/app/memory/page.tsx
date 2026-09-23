@@ -4,7 +4,8 @@ import { RoadmapPanel } from "@/components/roadmap-panel";
 
 export const metadata: Metadata = {
   title: "Memory — Ostra",
-  description: "Ostra has no persistent memory yet; conversations live in the browser only.",
+  description:
+    "Ostra's memory layer: Mem0-backed recall and explicit user-requested memory saves through the tool pipeline.",
 };
 
 export default function MemoryPage() {
@@ -13,16 +14,16 @@ export default function MemoryPage() {
       <RoadmapPanel
         eyebrow="Module 03 · Knowledge"
         title="Memory"
-        summary="Ostra does not remember anything between conversations. Each request carries only the recent turns of the conversation you are in, and nothing is stored on a server. Until a memory layer exists, this page will stay empty on purpose."
+        summary="Ostra can now store and recall memory through the Mem0 integration: saves happen only when you explicitly ask Ostra to remember something (approval-gated), and relevant memories can be retrieved before answering. Long-term architecture for scopes, editing and a dedicated memory browser remains planned."
         working={[
+          "Explicit saves via the approval-gated mem0.save_memory tool (enable 'Allow memory saving' in the chat header)",
+          "Recall via mem0.search_memory when a question needs prior knowledge",
           "Recent turns of the active conversation are sent per request",
           "Conversations persist in this browser's local storage",
-          "The runtime already has a context hook for injected messages",
         ]}
         planned={[
-          "A persistent memory store (Postgres or Supabase)",
-          "Recall injected into the runtime before each model call",
-          "Explicit write, edit and forget controls per memory item",
+          "Automatic (non-explicit) memory capture across conversations",
+          "A dedicated memory browser with edit and forget controls",
           "Separate scopes for global knowledge and per-project context",
         ]}
       />

@@ -19,6 +19,8 @@ export function EmptyState({
   disabled: boolean;
 }) {
   const isMock = !systemInfo || systemInfo.mode === "mock";
+  const activeToolCount =
+    OSTRA_CAPABILITIES.filter((capability) => capability.status === "active" && capability.label.includes("tool")).length;
 
   return (
     <div className="flex animate-fade-up flex-col items-center gap-7 py-6 text-center sm:py-12">
@@ -31,7 +33,9 @@ export function EmptyState({
         <p className="font-mono text-[10px] uppercase tracking-[0.32em] text-zinc-500">Ostra / AI system</p>
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-50 sm:text-[28px]">Talk to Ostra</h1>
         <p className="mx-auto max-w-md text-pretty-ostra text-sm leading-relaxed text-zinc-400">
-          {OSTRA_GREETING}
+          {isMock
+            ? "Ostra online. This is the communication layer of an agent system — in mock mode replies are simulated, so tools stay idle."
+            : OSTRA_GREETING}
         </p>
       </div>
 
@@ -52,6 +56,12 @@ export function EmptyState({
           </li>
         ))}
       </ul>
+
+      {activeToolCount > 0 && (
+        <p className="max-w-md text-[11px] leading-relaxed text-zinc-600">
+          {activeToolCount} tool{activeToolCount > 1 ? "s" : ""} run through Ostra&apos;s tool pipeline — ask “What time is it right now?” to see one execute.
+        </p>
+      )}
 
       <div className="grid w-full max-w-xl gap-2 sm:grid-cols-2">
         {OSTRA_SUGGESTIONS.map((suggestion) => (

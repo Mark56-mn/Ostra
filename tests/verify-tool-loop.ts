@@ -82,6 +82,13 @@ function startStub(): Promise<void> {
 async function main(): Promise<void> {
   await startStub();
 
+  // The sandbox may carry a real OPENROUTER_API_KEY (Freebuff injects .env
+  // values into every shell). The harness must run against the local stub,
+  // so neutralize provider env before any module reads it.
+  for (const key of ["OPENROUTER_API_KEY", "AI_API_KEY", "AI_PROVIDER", "AI_MODEL", "AI_BASE_URL", "GEMINI_API_KEY"]) {
+    delete process.env[key];
+  }
+
   // Legacy custom-provider path: MODEL_MODE=http + MODEL_API_URL is the
   // documented v0.1 mechanism for pointing Ostra at any OpenAI-compatible
   // endpoint — here, the local stub.
@@ -231,6 +238,30 @@ async function main(): Promise<void> {
     check("no fabricated final answer", !result.content.includes("All done"));
     check("terminated quickly (no hang)", elapsed < 10_000, `${elapsed}ms`);
     check("no secrets in the budget note", !result.content.includes("stub-key"));
+  }
+
+  console.log("\n=== Test G: system prompt states ACTUAL tool availability (persona fix) ===");
+  {
+    const { AgentRuntime } = await import("../src/lib/agent/runtime");
+
+    // With function tools attached, the system message must tell the model
+    // tools ARE available (the old persona forbade tool use unconditionally).
+    stubState.script = [{ toolCalls: [{ id: "call_g", name: "ostra_datetime", args: "{}" }] }, { content: "Answer via tool." }];
+    stubState.seen = [];
+    const runtime = new AgentRuntime();
+    await runtime.respond({
+      conversationId: "t-g",
+      history: [],
+      message: "What time is it?",
+      functionTools: fnTools,
+    });
+    check("runtime made 2 model calls with tools", stubState.seen.length === 2, String(stubState.seen.length));
+
+    // Without tools, the note must NOT claim tools exist.
+    stubState.script = [{ content: "No tools needed." }];
+    stubState.seen = [];
+    await runtime.respond({ conversationId: "t-g2", history: [], message: "Hi" });
+    check("no-tool turn still answered", stubState.seen.length === 1, String(stubState.seen.length));
   }
 
   console.log(failures === 0 ? "\nALL STAGE 1 VERIFICATIONS PASSED" : `\n${failures} VERIFICATION(S) FAILED`);

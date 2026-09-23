@@ -9,6 +9,7 @@
  */
 import { ModelProviderError } from "@/lib/model/errors";
 import { isAbortError } from "@/lib/utils";
+import { readEnv } from "./env";
 import type { GenerateOptions, GenerateResult, GenerateUsage, ModelMessage } from "@/lib/model/types";
 import type { ResolvedProvider } from "./types";
 
@@ -92,6 +93,18 @@ export async function callGemini(
     let lastUsage: GenerateUsage | undefined;
     const MAX_HOPS = 8;
 
+    // Safe, secret-free tool-loop trace (OSTRA_TOOL_DEBUG=1). Never logs the
+    // key, tokens, or tool results.
+    const debug = readEnv("OSTRA_TOOL_DEBUG") === "1";
+    const trace = (event: string, data: Record<string, unknown> = {}): void => {
+      if (!debug) return;
+      console.log(`[ostra:tool-loop:gemini] ${event}`, JSON.stringify(data));
+    };
+    trace("request", {
+      model: provider.model,
+      functionTools: functionTools.map((t) => t.name),
+    });
+
     for (let hop = 0; ; hop++) {
       const body: GeminiRequest = { contents: bodyContents };
       if (systemInstruction) body.systemInstruction = systemInstruction;
@@ -146,14 +159,21 @@ export async function callGemini(
       const modelTurn = { role: "model" as const, parts: calls.map((c) => ({ functionCall: { name: c.name, args: c.args ?? {} } })) };
       const responses: GeminiContent[] = [];
       for (const call of calls) {
+        trace("tool_call_received", { name: call.name, argsKeys: Object.keys(call.args ?? {}) });
         const outcome = await runOstraToolGemini(call, functionTools);
-        if (outcome.toolId) executedToolIds.push(outcome.toolId);
+        if (outcome.toolId) {
+          executedToolIds.push(outcome.toolId);
+          trace("tool_result_returned", { toolId: outcome.toolId, ok: outcome.result.ok === true });
+        } else {
+          trace("tool_call_rejected", { name: call.name, reason: "not_attached" });
+        }
         responses.push({
           role: "user" as const,
           parts: [{ functionResponse: { name: call.name, response: outcome.result } }],
         });
       }
       bodyContents = [...bodyContents, modelTurn, ...responses];
+      trace("continuation", { hop: hop + 1, turns: bodyContents.length });
 
       if (hop >= MAX_HOPS) {
         // Honest stop: never fabricate a completed answer past the budget.

@@ -17,7 +17,7 @@
 import { callProvider } from "@/lib/providers";
 import type { ModelMessage, ToolUsage } from "@/lib/model/types";
 import type { FunctionToolAttachment } from "@/lib/model/types";
-import { buildSystemPrompt } from "./persona";
+import { buildSystemPrompt, buildToolAvailabilityNote } from "./persona";
 
 export interface RuntimeInput {
   conversationId: string;
@@ -87,6 +87,8 @@ export class AgentRuntime {
     this.contextProviders = options.contextProviders ?? [];
   }
 
+  private readonly extraContext: string[] = [];
+
   async respond(input: RuntimeInput): Promise<RuntimeResult> {
     const messages = await this.buildMessages(input);
 
@@ -112,7 +114,7 @@ export class AgentRuntime {
     };
   }
 
-  /** Assembles: persona → context layers → trimmed history → new message. */
+  /** Assembles: persona + tool note → context layers → trimmed history → new message. */
   private async buildMessages(input: RuntimeInput): Promise<ModelMessage[]> {
     const history = input.history
       .filter((message) => message.content.trim().length > 0)
@@ -124,8 +126,17 @@ export class AgentRuntime {
       injected.push(...messages);
     }
 
+    // The tool-availability note is built from the tools ACTUALLY attached to
+    // this request, so the model is never told it has tools it does not have —
+    // and never told it has none when it does. This was the missing link that
+    // made live models refuse tool use: the static persona forbade tools even
+    // when the gateway attached real function tools.
+    const toolNote = buildToolAvailabilityNote(
+      (input.functionTools ?? []).map((tool) => ({ name: tool.name, description: tool.description })),
+    );
+
     return [
-      { role: "system", content: this.systemPrompt },
+      { role: "system", content: buildSystemPrompt([toolNote, ...this.extraContext]) },
       ...injected,
       ...history,
       { role: "user", content: input.message },
