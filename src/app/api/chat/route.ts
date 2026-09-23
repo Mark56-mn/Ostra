@@ -18,6 +18,9 @@ import { ModelSelectionError, validateModelSelection } from "@/lib/model-selecti
 import { resolveProviderConfig } from "@/lib/providers/config";
 import { ChatToolError, resolveChatTools } from "@/lib/tools/chat-tools";
 import { resolveAutoTools } from "@/lib/tools/chat-attach";
+import { getToolDefinition } from "@/lib/tools/registry";
+import { toolConfigStore } from "@/lib/tools/config";
+import { toFunctionAttachment } from "@/lib/tools/chat-attach";
 import { getActiveProviderConfig, type ChatApiSuccess } from "@/lib/system/info";
 
 export const runtime = "nodejs";
@@ -68,6 +71,11 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const { message, conversationId, history } = validation.value;
 
+  // V1: explicit per-request approval confirmations for approval-gated tools
+  // (e.g. mem0.save_memory). Server-validated against the registry; the model
+  // can never self-approve — this list is the only approval signal.
+  const approvedToolIds = parseApprovedToolIds((parsedBody as Record<string, unknown>).approvedTools);
+
   // Stage 2: optional per-request model selection, validated server-side.
   const body = parsedBody as Record<string, unknown>;
   const providerOverride = resolveProviderOverride(body.model);
@@ -98,14 +106,28 @@ export async function POST(request: Request): Promise<NextResponse> {
   // get the server-side web search/fetch. Client-requested server tools merge
   // on top. Tool-calling models without verified capabilities get nothing —
   // never a guess.
-  const autoTools = resolveAutoTools(effective.providerId, effective.modelId);
+  const autoTools = await resolveAutoTools(effective.providerId, effective.modelId);
   const mergedServerTools = [...autoTools.serverTools];
   if (toolAttachment) {
     for (const requested of toolAttachment.tools) {
       if (!mergedServerTools.some((t) => t.type === requested.type)) mergedServerTools.push(requested);
   }
   }
-  const hasFunctionTools = autoTools.functionTools.length > 0;
+  // An explicitly approved write tool joins the function tools for this turn
+  // (still permission-checked in the pipeline, with this one approval signal).
+  const approvedAttachments = approvedToolIds
+    .map((toolId) => ({ toolId, tool: getToolDefinition(toolId) }))
+    .filter(
+      (entry): entry is { toolId: string; tool: NonNullable<ReturnType<typeof getToolDefinition>> } =>
+        entry.tool !== null &&
+        entry.tool.executionType === "vercel-connect" &&
+        toolConfigStore.isEnabled(entry.tool),
+    )
+    .map((entry) => entry.tool)
+    .filter((tool) => !autoTools.functionTools.some((existing) => existing.toolId === tool.id))
+    .map((tool) => toFunctionAttachment(tool));
+  const allFunctionTools = [...autoTools.functionTools, ...approvedAttachments];
+  const hasFunctionTools = allFunctionTools.length > 0;
 
   const providerConfig = getActiveProviderConfig();
 
@@ -117,7 +139,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       signal: request.signal,
       ...(override ? { providerOverride: override } : {}),
       ...(mergedServerTools.length > 0 ? { tools: mergedServerTools, maxToolCalls: toolAttachment?.maxToolCalls } : {}),
-      ...(hasFunctionTools ? { functionTools: autoTools.functionTools } : {}),
+      ...(hasFunctionTools ? { functionTools: allFunctionTools } : {}),
+      ...(approvedToolIds.length > 0 ? { approvedToolIds } : {}),
     });
 
     const payload: ChatApiSuccess = {
@@ -153,6 +176,22 @@ export async function POST(request: Request): Promise<NextResponse> {
 
 export async function GET(): Promise<NextResponse> {
   return jsonError(405, "method_not_allowed", "Use POST to send a message to Ostra.");
+}
+
+/**
+ * Parse the optional `approvedTools` confirmation list: registry-known ids
+ * only, deduplicated, capped. The model never supplies this — it comes from
+ * the validated request body (the UI's explicit confirmation control).
+ */
+function parseApprovedToolIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  for (const entry of raw.slice(0, 5)) {
+    if (typeof entry !== "string") continue;
+    const tool = getToolDefinition(entry);
+    if (tool && tool.requiresApproval) seen.add(tool.id);
+  }
+  return [...seen];
 }
 
 /**

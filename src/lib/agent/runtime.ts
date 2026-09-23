@@ -40,9 +40,13 @@ export interface RuntimeInput {
   tools?: Array<{ type: string; parameters?: Record<string, unknown> }>;
   /**
    * Stage 2: validated native function tools. The gateway runs the full
-   * tool-call loop server-side; permission checks run with userApproved:false.
+   * tool-call loop server-side; permission checks run with userApproved:false
+   * for every tool except ids explicitly listed in approvedToolIds (V1) —
+   * the only approval signal, supplied by the validated request body.
    */
   functionTools?: FunctionToolAttachment[];
+  /** V1: tool ids the user explicitly confirmed for this turn (approval gate). */
+  approvedToolIds?: string[];
   /** Server-tool step budget / tool-loop hop budget for this request. */
   maxToolCalls?: number;
 }
@@ -93,6 +97,7 @@ export class AgentRuntime {
       providerOverride: input.providerOverride,
       tools: input.tools,
       functionTools: input.functionTools,
+      approvedToolIds: input.approvedToolIds,
       maxToolCalls: input.maxToolCalls,
     });
 

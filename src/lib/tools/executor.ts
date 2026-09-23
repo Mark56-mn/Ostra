@@ -111,13 +111,10 @@ export interface ConnectTokenRequestResult {
 }
 
 /**
- * Probe (and optionally execute through) a Vercel Connect connector.
- *
- * Stage 2 semantics: this resolves a *scoped runtime token* via
- * @vercel/connect to determine live connection status, then discards it —
- * it never returns credentials to callers and never places them in model
- * context. Actual per-connector operation execution lands in Stage 3 with
- * the task queue.
+ * Probe a Vercel Connect connector's live status (status endpoints). The
+ * scoped runtime token resolved via @vercel/connect is discarded immediately
+ * — it never returns credentials to callers and never places them in model
+ * context. Operation execution lives in executeConnectOperation().
  */
 export async function probeConnector(
   tool: ToolDefinition,
@@ -146,6 +143,60 @@ export async function probeConnector(
     return { ok: false, code: "adapter_error", message: "Vercel Connect adapter could not verify the connection." };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Vercel Connect operation execution (V1)
+// ---------------------------------------------------------------------------
+
+/**
+ * Execute one concrete Vercel Connect operation through the official
+ * runtime. Input is already schema-validated; the runtime resolves scoped
+ * credentials itself and returns structured, secret-free results.
+ */
+export async function executeConnectOperation(
+  toolId: string,
+  args: Record<string, unknown>,
+): Promise<{ ok: boolean; output: string; code: string }> {
+  const runtime = await import("@/lib/integrations/connect-runtime");
+
+  if (toolId === "github.list_repositories") {
+    const result = await runtime.githubListRepositories({
+      per_page: typeof args.per_page === "number" ? args.per_page : undefined,
+      page: typeof args.page === "number" ? args.page : undefined,
+      sort: typeof args.sort === "string" ? args.sort : undefined,
+    });
+    if (!result.ok) {
+      return { ok: false, code: result.code, output: JSON.stringify({ ok: false, error: result.code, message: result.message }) };
+    }
+    const payload = {
+      ok: true,
+      account: result.login,
+      total_returned: result.repos.length,
+      truncated: result.truncated,
+      repositories: result.repos,
+    };
+    return { ok: true, code: "executed", output: JSON.stringify(payload).slice(0, CONNECT_MAX_OUTPUT_CHARS) };
+  }
+
+  if (toolId === "mem0.search_memory") {
+    const result = await runtime.mem0SearchMemory(String(args.query));
+    return result.ok
+      ? { ok: true, code: "executed", output: JSON.stringify({ ok: true, query: args.query, results: result.results }).slice(0, CONNECT_MAX_OUTPUT_CHARS) }
+      : { ok: false, code: result.code, output: JSON.stringify({ ok: false, error: result.code, message: result.message }) };
+  }
+
+  if (toolId === "mem0.save_memory") {
+    const result = await runtime.mem0SaveMemory(String(args.text));
+    return result.ok
+      ? { ok: true, code: "executed", output: JSON.stringify({ ok: true, saved: true, message: result.message }) }
+      : { ok: false, code: result.code, output: JSON.stringify({ ok: false, error: result.code, message: result.message }) };
+  }
+
+  return { ok: false, code: "unsupported_execution", output: JSON.stringify({ ok: false, error: "unsupported_execution", message: "This integration operation is not implemented yet." }) };
+}
+
+/** Hard cap for serialized integration results entering model context. */
+const CONNECT_MAX_OUTPUT_CHARS = 20_000;
 
 // ---------------------------------------------------------------------------
 // Native adapter

@@ -12,8 +12,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request): Promise<NextResponse> {
-  const probe = new URL(request.url).searchParams.get("probe") === "1";
-  const integrations = await getIntegrationStatuses(probe);
+  const url = new URL(request.url);
+  const probe = url.searchParams.get("probe") === "1";
+  const idsParam = url.searchParams.get("ids");
+  const ids = idsParam ? idsParam.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 10) : undefined;
+  const integrations = await getIntegrationStatuses(probe, ids);
 
   const payload = {
     integrations,

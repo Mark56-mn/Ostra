@@ -60,29 +60,29 @@ describe("datetime tool", () => {
 });
 
 describe("auto-attach — provider capability gating", () => {
-  it("gives tool-calling models the native tools", () => {
-    const resolved = resolveAutoTools("gemini", "gemini-2.5-flash");
+  it("gives tool-calling models the native tools", async () => {
+    const resolved = await resolveAutoTools("gemini", "gemini-2.5-flash");
     assert.ok(resolved.functionTools.some((t) => t.toolId === "ostra:datetime"));
     assert.ok(resolved.functionTools.some((t) => t.toolId === "ostra:web_fetch"));
     assert.equal(resolved.serverTools.length, 0, "non-OpenRouter providers get no server tools");
   });
 
-  it("adds OpenRouter server tools only for OpenRouter models", () => {
-    const resolved = resolveAutoTools("openrouter", "nvidia/nemotron-3.5-lightning:free");
+  it("adds OpenRouter server tools only for OpenRouter models", async () => {
+    const resolved = await resolveAutoTools("openrouter", "nvidia/nemotron-3.5-lightning:free");
     assert.ok(resolved.serverTools.some((t) => t.type === "openrouter:web_search"));
     assert.ok(resolved.serverTools.some((t) => t.type === "openrouter:web_fetch"));
   });
 
-  it("gives providers with unverified capabilities NO tools (no guessing)", () => {
-    const resolved = resolveAutoTools("groq", "some-unverified-model");
+  it("gives providers with unverified capabilities NO tools (no guessing)", async () => {
+    const resolved = await resolveAutoTools("groq", "some-unverified-model");
     assert.equal(resolved.functionTools.length, 0);
     assert.equal(resolved.serverTools.length, 0);
   });
 
-  it("gives disabled native tools to nobody", () => {
+  it("gives disabled native tools to nobody", async () => {
     toolConfigStore.setEnabled("ostra:datetime", false);
     try {
-      const resolved = resolveAutoTools("gemini", "gemini-2.5-flash");
+      const resolved = await resolveAutoTools("gemini", "gemini-2.5-flash");
       assert.ok(!resolved.functionTools.some((t) => t.toolId === "ostra:datetime"));
     } finally {
       toolConfigStore.setEnabled("ostra:datetime", true);

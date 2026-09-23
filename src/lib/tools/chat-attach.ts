@@ -23,6 +23,9 @@ import { toolConfigStore } from "./config";
 /** Native tools the model may call (executed by Ostra, permission-gated). */
 const NATIVE_TOOL_IDS = ["ostra:datetime", "ostra:web_fetch"] as const;
 
+/** Integration operations the model may call when execution-ready (read-only). */
+const INTEGRATION_TOOL_IDS = ["github.list_repositories", "mem0.search_memory"] as const;
+
 /** OpenRouter server tools attached for OpenRouter models. */
 const OPENROUTER_SERVER_TOOL_IDS = ["openrouter:web_search", "openrouter:web_fetch"] as const;
 
@@ -34,7 +37,7 @@ export interface ResolvedToolAttachment {
 }
 
 /** All tools attached for this effective provider/model (may be empty). */
-export function resolveAutoTools(providerId: string, modelId: string): ResolvedToolAttachment {
+export async function resolveAutoTools(providerId: string, modelId: string): Promise<ResolvedToolAttachment> {
   const empty: ResolvedToolAttachment = { functionTools: [], serverTools: [] };
   const caps = getModelCapabilities(providerId, resolveCapabilityModelId(providerId, modelId));
   if (!caps || caps.capabilities.toolCalling !== true) return empty; // unknown/absent → no tools, no guessing
@@ -45,6 +48,22 @@ export function resolveAutoTools(providerId: string, modelId: string): ResolvedT
     const tool = getToolDefinition(id);
     if (!tool || !toolConfigStore.isEnabled(tool)) continue;
     functionTools.push(toFunctionAttachment(tool));
+  }
+
+  // Integration operations: attached only when the integration is genuinely
+  // execution-ready right now (live Connect readiness, cached briefly). A
+  // disconnected integration is never advertised to the model. The approval-
+  // gated write tool (mem0.save_memory) is NOT auto-attached; it arrives only
+  // via the explicit approvedToolIds confirmation path in /api/chat.
+  if (caps.capabilities.toolCalling === true) {
+    const { getExecutionReadiness } = await import("@/lib/integrations/connect-runtime");
+    for (const id of INTEGRATION_TOOL_IDS) {
+      const tool = getToolDefinition(id);
+      if (!tool || !toolConfigStore.isEnabled(tool)) continue;
+      const readiness = await getExecutionReadiness(tool.provider);
+      if (!readiness.executionReady) continue;
+      functionTools.push(toFunctionAttachment(tool));
+    }
   }
 
   // OpenRouter server tools: OpenRouter models only.
@@ -84,7 +103,8 @@ function normalize(id: string): string {
 
 import { getAllModelCapabilities } from "@/lib/providers/capabilities";
 
-function toFunctionAttachment(tool: ToolDefinition): FunctionToolAttachment {
+/** Exported for the explicit-approval attachment path in /api/chat. */
+export function toFunctionAttachment(tool: ToolDefinition): FunctionToolAttachment {
   return {
     name: tool.id.replace(/[^a-zA-Z0-9_-]/g, "_"),
     description: tool.description,

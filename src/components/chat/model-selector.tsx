@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useModelPreference } from "@/lib/chat/model-preference";
+import { useModelPreference, useMemoryWriteApproval } from "@/lib/chat/model-preference";
 import { cn } from "@/lib/utils";
 import { IconAlert, IconLayers } from "@/components/icons";
 
@@ -35,6 +35,7 @@ interface ModelsPayload {
  */
 export function ModelSelector({ className }: { className?: string }) {
   const { preference, setPreference } = useModelPreference();
+  const { approved: memoryApproved, setApproved: setMemoryApproved } = useMemoryWriteApproval();
   const [data, setData] = useState<ModelsPayload | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [open, setOpen] = useState(false);
@@ -183,6 +184,37 @@ export function ModelSelector({ className }: { className?: string }) {
             {loadFailed && (
               <p className="px-3 py-3 text-[12px] text-ember-300">The model catalog could not be loaded.</p>
             )}
+
+            {/* Memory-write approval (V1) — the only approval-gated tool. */}
+            <div className="mt-1 border-t border-white/[0.06] p-1.5">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={memoryApproved}
+                onClick={() => setMemoryApproved(!memoryApproved)}
+                className="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] text-zinc-300 transition hover:bg-white/[0.04]"
+              >
+                <span className="min-w-0">
+                  <span className="block font-medium">Allow memory saving</span>
+                  <span className="block font-mono text-[9px] uppercase tracking-[0.1em] text-zinc-500">
+                    {memoryApproved ? "Mem0 writes confirmed" : "Mem0 writes require approval"}
+                  </span>
+                </span>
+                <span
+                  className={cn(
+                    "relative h-4 w-7 shrink-0 rounded-full transition",
+                    memoryApproved ? "bg-signal-500/70" : "bg-zinc-700",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "absolute top-0.5 h-3 w-3 rounded-full bg-zinc-100 transition-all",
+                      memoryApproved ? "left-3.5" : "left-0.5",
+                    )}
+                  />
+                </span>
+              </button>
+            </div>
             {data && providers.length === 0 && !loadFailed && (
               <p className="px-3 py-3 text-[12px] text-zinc-500">No allowlisted models are configured yet.</p>
             )}

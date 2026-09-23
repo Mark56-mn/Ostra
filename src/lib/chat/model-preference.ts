@@ -97,3 +97,68 @@ export function useModelPreference(): {
   const preference = useSyncExternalStore(subscribeModelPreference, getModelPreference, () => SERVER_SNAPSHOT);
   return { preference, setPreference: setModelPreference };
 }
+
+// ---------------------------------------------------------------------------
+// Memory-write approval (V1)
+// ---------------------------------------------------------------------------
+
+/**
+ * Explicit user consent for approval-gated memory writes (mem0.save_memory).
+ * Off by default: when off, the model's request to save a memory is refused
+ * by the server's permission engine. When on, each /api/chat request carries
+ * the confirmation signal — which the server validates against its registry
+ * and the permission engine still enforces per tool.
+ */
+const APPROVAL_KEY = "ostra.approve-memory-writes.v1";
+
+let approvalState = false;
+let approvalHydrated = false;
+const approvalListeners = new Set<() => void>();
+
+function emitApproval(): void {
+  for (const listener of approvalListeners) listener();
+}
+
+function readApprovalStored(): boolean {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return false;
+    return window.localStorage.getItem(APPROVAL_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function getMemoryWriteApproval(): boolean {
+  if (!approvalHydrated) {
+    approvalHydrated = true;
+    approvalState = readApprovalStored();
+  }
+  return approvalState;
+}
+
+export function setMemoryWriteApproval(approved: boolean): void {
+  approvalState = approved;
+  approvalHydrated = true;
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      if (approved) window.localStorage.setItem(APPROVAL_KEY, "true");
+      else window.localStorage.removeItem(APPROVAL_KEY);
+    }
+  } catch {
+    // Storage unavailable — keep the in-memory value.
+  }
+  emitApproval();
+}
+
+function subscribeApproval(listener: () => void): () => void {
+  approvalListeners.add(listener);
+  return () => {
+    approvalListeners.delete(listener);
+  };
+}
+
+/** React binding: whether the user has approved memory writes. */
+export function useMemoryWriteApproval(): { approved: boolean; setApproved: (approved: boolean) => void } {
+  const approved = useSyncExternalStore(subscribeApproval, getMemoryWriteApproval, () => false);
+  return { approved, setApproved: setMemoryWriteApproval };
+}

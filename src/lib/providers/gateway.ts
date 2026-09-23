@@ -180,6 +180,11 @@ async function callOpenAICompatible(
   let lastUsage: ReturnType<typeof parseOpenAIChatResponse>["usage"];
   let lastAssistant = "";
 
+  // V1: the only approval signal for approval-gated tools — ids the user
+  // explicitly confirmed in the validated request body. The model can never
+  // add to this list.
+  const approved = new Set(options.approvedToolIds ?? []);
+
   for (let hop = 0; hop <= maxHops; hop++) {
     const raw = await postChatCompletion(provider, wire, options, {
       serverTools,
@@ -237,7 +242,7 @@ async function callOpenAICompatible(
         continue;
       }
       executedToolIds.push(attachment.toolId);
-      const outcome = await runOstraTool(attachment, call.arguments);
+      const outcome = await runOstraTool(attachment, call.arguments, { userApproved: approved.has(attachment.toolId) });
       toolMsgs.push({ role: "tool", tool_call_id: call.id, content: outcome });
     }
     wire = [...wire, assistantMsg, ...toolMsgs];
@@ -443,7 +448,11 @@ function finishResult(
  * userApproved is always false here. Failures become structured tool
  * results the model can reason about, never thrown into the chat path.
  */
-async function runOstraTool(attachment: FunctionToolAttachment, rawArguments: string): Promise<string> {
+async function runOstraTool(
+  attachment: FunctionToolAttachment,
+  rawArguments: string,
+  approval: { userApproved: boolean } = { userApproved: false },
+): Promise<string> {
   let args: Record<string, unknown>;
   try {
     const parsed: unknown = rawArguments.trim().length > 0 ? JSON.parse(rawArguments) : {};
@@ -461,7 +470,7 @@ async function runOstraTool(attachment: FunctionToolAttachment, rawArguments: st
     // Dynamic import: keeps the gateway free of tool-layer module cycles and
     // defers the cost until a tool call actually happens.
     const tools = await import("@/lib/tools");
-    const result = await tools.executeTool(attachment.toolId, args, { userApproved: false });
+    const result = await tools.executeTool(attachment.toolId, args, { userApproved: approval.userApproved });
     return truncateToolResult(JSON.stringify(result));
   } catch (error) {
     const tools = await import("@/lib/tools");

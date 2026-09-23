@@ -144,6 +144,76 @@ const NATIVE_TOOLS: ToolDefinition[] = [
   },
 ];
 
+/**
+ * Concrete integration operations (V1) — the first genuinely executable
+ * Vercel Connect operations. Each is a specific read/write operation, not a
+ * generic passthrough, so permissions and approval apply per operation.
+ */
+const CONNECT_OPERATION_TOOLS: ToolDefinition[] = [
+  {
+    id: "github.list_repositories",
+    name: "GitHub — List Repositories",
+    provider: "github",
+    category: "developer",
+    description:
+      "List the repositories of the user's connected GitHub account (name, URL, description, language, stars, privacy). Read-only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        per_page: { type: "number", description: "Repositories per page, 1-100 (default 30)." },
+        page: { type: "number", description: "Page number, 1-10 (default 1)." },
+        sort: { type: "string", description: "Sort: created, updated, pushed or full_name (default updated)." },
+      },
+    },
+    enabled: true,
+    requiresAuthentication: true,
+    executionType: "vercel-connect",
+    requiredCapability: "toolCalling",
+    riskLevel: "low",
+    permission: "read",
+    requiresApproval: false,
+  },
+  {
+    id: "mem0.search_memory",
+    name: "Mem0 — Search Memory",
+    provider: "mem0",
+    category: "memory",
+    description: "Search the user's persistent Mem0 memory for facts relevant to a query. Read-only.",
+    inputSchema: {
+      type: "object",
+      properties: { query: { type: "string", description: "What to look up in memory." } },
+      required: ["query"],
+    },
+    enabled: true,
+    requiresAuthentication: true,
+    executionType: "vercel-connect",
+    requiredCapability: "toolCalling",
+    riskLevel: "low",
+    permission: "read",
+    requiresApproval: false,
+  },
+  {
+    id: "mem0.save_memory",
+    name: "Mem0 — Save Memory",
+    provider: "mem0",
+    category: "memory",
+    description:
+      "Persist one fact the user explicitly asked Ostra to remember. Only called when the user requests remembering something.",
+    inputSchema: {
+      type: "object",
+      properties: { text: { type: "string", description: "The fact to persist, stated as the user expressed it." } },
+      required: ["text"],
+    },
+    enabled: true,
+    requiresAuthentication: true,
+    executionType: "vercel-connect",
+    requiredCapability: "toolCalling",
+    riskLevel: "medium",
+    permission: "write",
+    requiresApproval: true,
+  },
+];
+
 /** Tier-1 integrations, enabled in the registry by default (still gated on connection). */
 const TIER_1 = new Set([
   "github",
@@ -260,7 +330,12 @@ function connectTool(
   };
 }
 
-export const TOOL_REGISTRY: readonly ToolDefinition[] = [...OPENROUTER_TOOLS, ...NATIVE_TOOLS, ...VERCEL_CONNECT_TOOLS];
+export const TOOL_REGISTRY: readonly ToolDefinition[] = [
+  ...OPENROUTER_TOOLS,
+  ...NATIVE_TOOLS,
+  ...CONNECT_OPERATION_TOOLS,
+  ...VERCEL_CONNECT_TOOLS,
+];
 
 export function getToolDefinition(toolId: string): ToolDefinition | null {
   return TOOL_REGISTRY.find((t) => t.id === toolId) ?? null;

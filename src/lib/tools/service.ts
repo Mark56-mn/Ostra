@@ -14,7 +14,7 @@
  */
 import { checkModelToolCompatibility, type CompatibilityResult } from "./compatibility";
 import { toolConfigStore } from "./config";
-import { buildOpenRouterToolSpecs, executeNativeTool, lookupConnector, probeConnector } from "./executor";
+import { buildOpenRouterToolSpecs, executeConnectOperation, executeNativeTool, lookupConnector, probeConnector } from "./executor";
 import { evaluateToolPermission, type PermissionDecision } from "./permissions";
 import { getToolDefinition, listToolDefinitions } from "./registry";
 import type { ToolDefinition, ToolStatus } from "./types";
@@ -103,10 +103,6 @@ export function getAllToolStatuses(): ToolStatus[] {
   });
 }
 
-/**
- * Live connection probe for one Vercel Connect tool. Synchronous routes use
- * `available` from getAllToolStatuses; this is the explicit, on-demand check.
- */
 export async function getToolConnectionStatus(toolId: string): Promise<{
   toolId: string;
   executionType: ToolDefinition["executionType"];
@@ -230,7 +226,9 @@ export async function executeTool(
   }
 
   const decision = evaluateToolPermission(tool, {
-    connected: !tool.requiresAuthentication,
+    // Integration operations: connection is verified live via the Connect
+    // runtime (readiness check). Everything else keeps the registry gate.
+    connected: !tool.requiresAuthentication || (await isConnectedLive(tool)),
     compatible: !context.providerId || !context.modelId || checkModelToolCompatibility({ providerId: context.providerId, modelId: context.modelId, tool }).compatible,
     userApproved: context.userApproved,
   });
@@ -263,9 +261,14 @@ export async function executeTool(
       return { toolId: tool.id, state: "executed", output: result.output, decision };
     }
     case "vercel-connect": {
-      // Stage 2: architecture exists, per-connector operation execution is
-      // Stage 3. Refuse honestly rather than pretend.
-      throw new ToolError("unsupported_execution", "Vercel Connect execution lands in Stage 3 — the adapter and permission layer are live, per-connector operations are not yet.", 501);
+      // V1: concrete operations (github.list_repositories, mem0.*) execute
+      // through the official Connect runtime. Generic connect:* passthrough
+      // tools still refuse honestly — only registered operations exist.
+      const result = await executeConnectOperation(tool.id, validation.args);
+      if (!result.ok) {
+        throw new ToolError(mapConnectCode(result.code), safeConnectMessage(result.code, tool.id), 502);
+      }
+      return { toolId: tool.id, state: "executed", output: result.output, decision };
     }
     case "external": {
       throw new ToolError("unsupported_execution", "External tool execution is not implemented in Stage 2.", 501);
@@ -300,5 +303,62 @@ function mapDecisionCode(code: string): ToolErrorCode {
       return "incompatible_model";
     default:
       return "execution_failed";
+  }
+}
+
+/**
+ * Live connection check for tools that require authentication. Only
+ * integration operations go through the Connect runtime's readiness check
+ * (which also proves authorization); everything else keeps the registry gate.
+ */
+async function isConnectedLive(tool: ToolDefinition): Promise<boolean> {
+  if (tool.executionType !== "vercel-connect") return false;
+  if (tool.id.startsWith("connect:")) return false;
+  const { getExecutionReadiness } = await import("@/lib/integrations/connect-runtime");
+  const readiness = await getExecutionReadiness(tool.provider);
+  return readiness.executionReady;
+}
+
+function mapConnectCode(code: string): ToolErrorCode {
+  switch (code) {
+    case "oidc_missing":
+    case "not_connected":
+    case "authorization_required":
+    case "installation_required":
+    case "unauthorized":
+      return "not_connected";
+    case "rate_limited":
+      return "execution_failed";
+    case "unsupported_execution":
+      return "unsupported_execution";
+    default:
+      return "execution_failed";
+  }
+}
+
+/**
+ * Safe, tool-specific refusal message — never echoes upstream error bodies,
+ * which could contain credential material.
+ */
+function safeConnectMessage(code: string, toolId: string): string {
+  const toolName = toolId.split(".")[0].toUpperCase();
+  switch (code) {
+    case "oidc_missing":
+      return `${toolName} is registered but this environment has no Vercel OIDC token — integration tools execute on a Vercel deployment with the connector attached.`;
+    case "not_connected":
+    case "unauthorized":
+      return `${toolName} is registered but not execution-ready: no usable connection grant is available.`;
+    case "authorization_required":
+      return `${toolName} is connected but requires user authorization on Vercel before it can execute.`;
+    case "installation_required":
+      return `${toolName} connector is not installed for this Vercel project.`;
+    case "rate_limited":
+      return `${toolName} is rate-limited right now — try again shortly.`;
+    case "timeout":
+      return `${toolName} did not respond in time.`;
+    case "invalid_url":
+      return `${toolName} rejected the request arguments.`;
+    default:
+      return `${toolName} could not complete the operation. The integration may be temporarily unavailable.`;
   }
 }

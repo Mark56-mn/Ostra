@@ -55,8 +55,12 @@ export interface GenerateOptions {
   /**
    * Stage 2: native tools exposed as functions the model may call. The
    * gateway runs the tool-call loop (call → execute → continue → final).
+   * Approval checks run with userApproved:false for all tools except ids in
+   * approvedToolIds — the caller's explicit, validated confirmation (V1).
    */
   functionTools?: FunctionToolAttachment[];
+  /** Tool ids the user explicitly confirmed for this request (approval gate). */
+  approvedToolIds?: string[];
   /** Tool budget: OpenRouter server-tool steps (1–30) and client-loop hops. */
   maxToolCalls?: number;
 }

@@ -9,6 +9,7 @@ import { Composer } from "./composer";
 import { EmptyState } from "./empty-state";
 import { MessageItem } from "./message-item";
 import { ModelSelector } from "./model-selector";
+import { IntegrationChips } from "./integration-chips";
 import { ThinkingIndicator } from "./thinking-indicator";
 
 export function ChatWorkspace() {
@@ -64,6 +65,7 @@ export function ChatWorkspace() {
             </p>
           </div>
           <ModelSelector className="shrink-0" />
+          <IntegrationChips className="shrink-0" />
           <SystemStatusChip
             systemInfo={chat.systemInfo}
             failed={chat.systemStatusFailed}

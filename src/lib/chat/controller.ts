@@ -12,7 +12,7 @@ import type { ChatMessage, Conversation } from "@/lib/conversations/types";
 import type { ModelMessage } from "@/lib/model/types";
 import { createId, isAbortError } from "@/lib/utils";
 import { CLIENT_HISTORY_LIMIT, CLIENT_MAX_MESSAGE_LENGTH } from "./constants";
-import { getModelPreference } from "./model-preference";
+import { getModelPreference, getMemoryWriteApproval } from "./model-preference";
 
 let activeRequest: AbortController | null = null;
 
@@ -58,10 +58,21 @@ export async function sendMessage(rawText: string): Promise<void> {
     const selected = getModelPreference();
     const modelSelection = selected ? { provider: selected.provider, model: selected.model } : undefined;
 
+    // V1: explicit confirmation for approval-gated tools (memory writes).
+    // Server-side permission enforcement is unchanged — this only supplies
+    // the confirmation signal when the user has opted in.
+    const approvedTools = getMemoryWriteApproval() ? ["mem0.save_memory"] : [];
+
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message: text, conversationId: conversation.id, history, model: modelSelection }),
+      body: JSON.stringify({
+        message: text,
+        conversationId: conversation.id,
+        history,
+        model: modelSelection,
+        ...(approvedTools.length > 0 ? { approvedTools } : {}),
+      }),
       signal: controller.signal,
     });
 
