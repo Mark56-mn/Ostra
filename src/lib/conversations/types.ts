@@ -14,6 +14,10 @@ export interface ChatMessage {
   createdAt: number;
   /** Set when the user stopped generation mid-flight. */
   interrupted?: boolean;
+  /** Ostra native tool ids that ran for this reply (transparency). */
+  toolsUsed?: string[];
+  /** Citation URLs from server-side web search/fetch, when any. */
+  sources?: Array<{ url: string; title?: string }>;
 }
 
 export interface Conversation {

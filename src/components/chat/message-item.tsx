@@ -34,11 +34,24 @@ export function MessageItem({ message }: { message: ChatMessage }) {
           </span>
           <span className="text-zinc-700">·</span>
           <time dateTime={new Date(message.createdAt).toISOString()}>{formatClockTime(message.createdAt)}</time>
+          {message.toolsUsed && message.toolsUsed.length > 0 && (
+            <span className="rounded-full border border-signal-400/20 bg-signal-500/[0.08] px-2 py-0.5 text-signal-400/80 normal-case">
+              Used: {message.toolsUsed.map((t) => toolLabel(t)).join(" + ")}
+            </span>
+          )}
           {!isUser && !message.interrupted && <CopyButton text={message.content} />}
         </div>
       </div>
     </li>
   );
+}
+
+function toolLabel(toolId: string): string {
+  const short = toolId.split(":").pop() ?? toolId;
+  return short
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function CopyButton({ text }: { text: string }) {

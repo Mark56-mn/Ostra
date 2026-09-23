@@ -8,6 +8,7 @@ import { useChat } from "@/hooks/use-chat";
 import { Composer } from "./composer";
 import { EmptyState } from "./empty-state";
 import { MessageItem } from "./message-item";
+import { ModelSelector } from "./model-selector";
 import { ThinkingIndicator } from "./thinking-indicator";
 
 export function ChatWorkspace() {
@@ -62,6 +63,7 @@ export function ChatWorkspace() {
               <span>{messages.length} msg</span>
             </p>
           </div>
+          <ModelSelector className="shrink-0" />
           <SystemStatusChip
             systemInfo={chat.systemInfo}
             failed={chat.systemStatusFailed}

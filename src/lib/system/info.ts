@@ -83,6 +83,14 @@ export interface ChatApiSuccess {
   provider: string;
   mode: "mock" | "live";
   latencyMs: number;
+  /** Echo of the client's requested selection; null when the server default ran. */
+  requested: { provider: string; model: string } | null;
+  /** Ostra native tool ids that executed during the turn (empty = none). */
+  toolsUsed: string[];
+  /** Provider-reported server-tool steps (OpenRouter web search/fetch). */
+  serverToolSteps?: number;
+  /** Citation URLs from server-side web search/fetch, when any. */
+  sources?: Array<{ url: string; title?: string }>;
 }
 
 /** Error body shape returned by all Ostra API error paths. */

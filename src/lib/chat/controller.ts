@@ -12,6 +12,7 @@ import type { ChatMessage, Conversation } from "@/lib/conversations/types";
 import type { ModelMessage } from "@/lib/model/types";
 import { createId, isAbortError } from "@/lib/utils";
 import { CLIENT_HISTORY_LIMIT, CLIENT_MAX_MESSAGE_LENGTH } from "./constants";
+import { getModelPreference } from "./model-preference";
 
 let activeRequest: AbortController | null = null;
 
@@ -21,6 +22,9 @@ interface ChatApiPayload {
   model?: unknown;
   provider?: unknown;
   mode?: unknown;
+  requested?: { provider?: unknown; model?: unknown } | null;
+  toolsUsed?: unknown;
+  sources?: unknown;
   error?: { code?: unknown; message?: unknown };
 }
 
@@ -49,10 +53,15 @@ export async function sendMessage(rawText: string): Promise<void> {
   try {
     const history = buildHistory(conversation.id, userMessage.id);
 
+    // The user's model selection, if one is made. The server re-validates it
+    // against its allowlist on every request and rejects invalid selections.
+    const selected = getModelPreference();
+    const modelSelection = selected ? { provider: selected.provider, model: selected.model } : undefined;
+
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message: text, conversationId: conversation.id, history }),
+      body: JSON.stringify({ message: text, conversationId: conversation.id, history, model: modelSelection }),
       signal: controller.signal,
     });
 
@@ -67,11 +76,28 @@ export async function sendMessage(rawText: string): Promise<void> {
       throw new ChatRequestError("Ostra returned an empty response.");
     }
 
+    // The response metadata proves which model actually answered. When a model
+    // was selected and the server reports a different one, surface it loudly
+    // instead of silently trusting the selection.
+    const answeredProvider = typeof payload?.provider === "string" ? payload.provider : null;
+    const answeredModel = typeof payload?.model === "string" ? payload.model : null;
+    if (modelSelection && (answeredProvider !== modelSelection.provider || answeredModel !== modelSelection.model)) {
+      console.warn(
+        "[ostra:chat] server answered with a different model than selected",
+        { selected: modelSelection, answered: { provider: answeredProvider, model: answeredModel } },
+      );
+      throw new ChatRequestError(
+        `Ostra answered with ${answeredProvider ?? "unknown"}/${answeredModel ?? "unknown"} instead of the selected ${modelSelection.provider}/${modelSelection.model}.`,
+      );
+    }
+
     chatStore.appendMessage(conversation.id, {
       id: createId(),
       role: "assistant",
       content: reply,
       createdAt: Date.now(),
+      ...(toolsUsedFrom(payload).length > 0 ? { toolsUsed: toolsUsedFrom(payload) } : {}),
+      ...(sourcesFrom(payload).length > 0 ? { sources: sourcesFrom(payload) } : {}),
     });
   } catch (error) {
     if (isAbortError(error)) {
@@ -151,6 +177,26 @@ function errorMessageFrom(payload: ChatApiPayload | null, status: number): strin
   if (status === 429) return "Ostra is receiving too many requests. Wait a moment and try again.";
   if (status === 503) return "The model endpoint is unavailable right now.";
   return `Ostra's API returned an error (HTTP ${status}).`;
+}
+
+function toolsUsedFrom(payload: ChatApiPayload | null): string[] {
+  const raw = payload?.toolsUsed;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((v): v is string => typeof v === "string" && v.length > 0).slice(0, 10);
+}
+
+function sourcesFrom(payload: ChatApiPayload | null): Array<{ url: string; title?: string }> {
+  const raw = payload?.sources;
+  if (!Array.isArray(raw)) return [];
+  const out: Array<{ url: string; title?: string }> = [];
+  for (const entry of raw.slice(0, 8)) {
+    if (typeof entry === "object" && entry !== null && typeof (entry as { url?: unknown }).url === "string") {
+      const url = (entry as { url: string }).url;
+      const title = typeof (entry as { title?: unknown }).title === "string" ? (entry as { title: string }).title : undefined;
+      out.push({ url, ...(title ? { title } : {}) });
+    }
+  }
+  return out;
 }
 
 class ChatRequestError extends Error {

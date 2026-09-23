@@ -1,15 +1,17 @@
 /**
- * Tool executor (Stage 2) — adapters, one per execution type.
+ * Tool executor (Stage 2/3) — adapters, one per execution type.
  *
  * Flow: permission decision → argument validation → adapter.execute() →
  * sanitized result. Provider-specific logic lives ONLY here.
  *
  * - openrouter:      not executed here — returned as request attachment specs
  *                    for the model gateway (see buildOpenRouterToolSpecs).
- * - native:          executed in-process (ostra:noop).
+ * - native:          executed in-process (ostra:noop, ostra:datetime,
+ *                    ostra:web_fetch).
  * - vercel-connect:  executes through @vercel/connect scoped runtime tokens.
- * - external:        registered seam; execution arrives with Stage 3.
+ * - external:        registered seam; execution arrives in a later stage.
  */
+import { isAbortError } from "@/lib/utils";
 import type { ToolDefinition } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -155,12 +157,204 @@ export interface NativeExecutionResult {
   code?: "executed" | "unsupported";
 }
 
-/** In-process execution for native tools. Stage 2 ships exactly one: noop. */
+/** In-process execution for native tools: noop, datetime, web_fetch. */
 export async function executeNativeTool(tool: ToolDefinition, args: Record<string, unknown>): Promise<NativeExecutionResult> {
   if (tool.id === "ostra:noop") {
     return { ok: true, output: `echo: ${String(args.echo ?? "")}`, code: "executed" };
   }
+  if (tool.id === "ostra:datetime") {
+    return { ok: true, output: JSON.stringify(formatDateTime()), code: "executed" };
+  }
+  if (tool.id === "ostra:web_fetch") {
+    return fetchPublicPage(args);
+  }
   return { ok: false, output: "Native execution is not implemented for this tool.", code: "unsupported" };
+}
+
+export interface DatetimeOutput {
+  iso_utc: string;
+  epoch_ms: number;
+  weekday_utc: string;
+  date_local: string;
+  time_local: string;
+  timezone: string;
+}
+
+/** Reliable, testable current-time snapshot for the model. */
+export function formatDateTime(now: Date = new Date()): DatetimeOutput {
+  return {
+    iso_utc: now.toISOString(),
+    epoch_ms: now.getTime(),
+    weekday_utc: now.toUTCString().slice(0, 3),
+    date_local: new Intl.DateTimeFormat("en-CA", {
+      year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(now),
+    time_local: new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+    }).format(now),
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// ostra:web_fetch — safe public-page fetch (native adapter)
+// ---------------------------------------------------------------------------
+
+/** Hard limits so a fetch can never become a server-side network hazard. */
+export const WEB_FETCH_LIMITS = {
+  maxBytes: 1_500_000,
+  timeoutMs: 15_000,
+  maxRedirects: 4,
+  maxOutputChars: 8_000,
+} as const;
+
+/** URL scheme must be http(s) and the host must not be a loopback/private target. */
+export function validateFetchUrl(raw: unknown): { ok: true; url: URL } | { ok: false; reason: string } {
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    return { ok: false, reason: "A `url` string is required." };
+  }
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    return { ok: false, reason: "The URL could not be parsed." };
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return { ok: false, reason: "Only http and https URLs are allowed." };
+  }
+  const host = url.hostname.toLowerCase();
+  const isPrivate =
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "0.0.0.0" ||
+    /^127\./.test(host) ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^169\.254\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+    host.endsWith(".internal") ||
+    host.endsWith(".local") ||
+    host === "metadata.google.internal" ||
+    host === "169.254.169.254";
+  if (isPrivate) {
+    return { ok: false, reason: "Private, loopback and link-local hosts are not fetchable." };
+  }
+  if (url.port !== "" && !/^(80|443|8080|8443)$/.test(url.port)) {
+    return { ok: false, reason: "Only ports 80, 443, 8080 and 8443 are allowed." };
+  }
+  return { ok: true, url };
+}
+
+/**
+ * Fetch a public page and return model-usable text. Never throws: failures
+ * become { ok:false, ... } so the gateway can feed them back to the model.
+ */
+export async function fetchPublicPage(args: Record<string, unknown>): Promise<NativeExecutionResult> {
+  const validated = validateFetchUrl(args.url);
+  if (!validated.ok) {
+    return { ok: false, output: JSON.stringify({ ok: false, error: "invalid_url", message: validated.reason }) };
+  }
+  const target = validated.url;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), WEB_FETCH_LIMITS.timeoutMs);
+  try {
+    return await fetchPageWithRedirects(target, controller.signal, 0);
+  } catch (error) {
+    if (isAbortError(error)) {
+      return { ok: false, output: JSON.stringify({ ok: false, error: "fetch_timeout", message: `The page did not respond within ${WEB_FETCH_LIMITS.timeoutMs / 1000}s.` }) };
+    }
+    const detail = error instanceof Error ? error.name : String(error);
+    return { ok: false, output: JSON.stringify({ ok: false, error: "fetch_failed", message: `The page could not be fetched (${detail}).` }) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchPageWithRedirects(
+  url: URL,
+  signal: AbortSignal,
+  redirectCount: number,
+): Promise<NativeExecutionResult> {
+  if (redirectCount > WEB_FETCH_LIMITS.maxRedirects) {
+    return { ok: false, output: JSON.stringify({ ok: false, error: "too_many_redirects", message: "The page redirected too many times." }) };
+  }
+  const response = await fetch(url, {
+    method: "GET",
+    redirect: "manual",
+    signal,
+    headers: { accept: "text/html,text/plain,application/json;q=0.9,*/*;q=0.5", "user-agent": "OstraBot/0.1 (+https://ostra.app)" },
+    cache: "no-store",
+  });
+
+  // Manual redirects: re-validate every hop so redirects can never reach
+  // internal hosts.
+  if ([301, 302, 303, 307, 308].includes(response.status)) {
+    const location = response.headers.get("location");
+    if (!location) {
+      return { ok: false, output: JSON.stringify({ ok: false, error: "fetch_failed", message: "Redirect without a location header." }) };
+    }
+    const next = new URL(location, url);
+    const revalidated = validateFetchUrl(next.toString());
+    if (!revalidated.ok) {
+      return { ok: false, output: JSON.stringify({ ok: false, error: "invalid_url", message: `Redirect target refused: ${revalidated.reason}` }) };
+    }
+    return fetchPageWithRedirects(revalidated.url, signal, redirectCount + 1);
+  }
+
+  if (!response.ok) {
+    return { ok: false, output: JSON.stringify({ ok: false, error: "fetch_http_error", message: `The page responded with HTTP ${response.status}.` }) };
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  const isTextLike = /text\/|application\/json|application\/xml|application\/(?:x-)?javascript/.test(contentType);
+  if (!isTextLike) {
+    return { ok: false, output: JSON.stringify({ ok: false, error: "unsupported_content", message: `The page returned ${contentType || "an unknown content type"}; only text pages are supported.` }) };
+  }
+
+  // Size cap: stream-read with a hard byte ceiling.
+  const contentLength = Number(response.headers.get("content-length") ?? "0");
+  if (contentLength > WEB_FETCH_LIMITS.maxBytes) {
+    return { ok: false, output: JSON.stringify({ ok: false, error: "response_too_large", message: "The page is too large to read." }) };
+  }
+  const buffer = await response.arrayBuffer();
+  if (buffer.byteLength > WEB_FETCH_LIMITS.maxBytes) {
+    return { ok: false, output: JSON.stringify({ ok: false, error: "response_too_large", message: "The page is too large to read." }) };
+  }
+
+  const raw = new TextDecoder().decode(buffer);
+  const text = extractReadableText(raw, contentType);
+  const output = text.length > WEB_FETCH_LIMITS.maxOutputChars ? `${text.slice(0, WEB_FETCH_LIMITS.maxOutputChars)}…[truncated]` : text;
+  return {
+    ok: true,
+    output: JSON.stringify({ ok: true, url: url.toString(), content_type: contentType, chars: output.length, content: output }),
+    code: "executed",
+  };
+}
+
+/** Strip scripts/styles/tags down to readable text the model can use. */
+export function extractReadableText(html: string, contentType: string): string {
+  if (!/text\/html|application\/xhtml/i.test(contentType)) {
+    return html.replace(/\s+\n/g, "\n").trim();
+  }
+  return html
+    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<svg\b[\s\S]*?<\/svg>/gi, " ")
+    .replace(/<!--[^]*?-->/g, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|section|article|li|h[1-6]|tr)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 // ---------------------------------------------------------------------------

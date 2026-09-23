@@ -17,6 +17,7 @@ import { parseChatRequest } from "@/lib/api/validation";
 import { ModelSelectionError, validateModelSelection } from "@/lib/model-selection";
 import { resolveProviderConfig } from "@/lib/providers/config";
 import { ChatToolError, resolveChatTools } from "@/lib/tools/chat-tools";
+import { resolveAutoTools } from "@/lib/tools/chat-attach";
 import { getActiveProviderConfig, type ChatApiSuccess } from "@/lib/system/info";
 
 export const runtime = "nodejs";
@@ -92,6 +93,20 @@ export async function POST(request: Request): Promise<NextResponse> {
     throw error;
   }
 
+  // Stage 3: tools the model may call. Native tools (datetime, web fetch) are
+  // auto-attached for every tool-calling model; OpenRouter models additionally
+  // get the server-side web search/fetch. Client-requested server tools merge
+  // on top. Tool-calling models without verified capabilities get nothing —
+  // never a guess.
+  const autoTools = resolveAutoTools(effective.providerId, effective.modelId);
+  const mergedServerTools = [...autoTools.serverTools];
+  if (toolAttachment) {
+    for (const requested of toolAttachment.tools) {
+      if (!mergedServerTools.some((t) => t.type === requested.type)) mergedServerTools.push(requested);
+  }
+  }
+  const hasFunctionTools = autoTools.functionTools.length > 0;
+
   const providerConfig = getActiveProviderConfig();
 
   try {
@@ -101,7 +116,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       message,
       signal: request.signal,
       ...(override ? { providerOverride: override } : {}),
-      ...(toolAttachment ? { tools: toolAttachment.tools, maxToolCalls: toolAttachment.maxToolCalls } : {}),
+      ...(mergedServerTools.length > 0 ? { tools: mergedServerTools, maxToolCalls: toolAttachment?.maxToolCalls } : {}),
+      ...(hasFunctionTools ? { functionTools: autoTools.functionTools } : {}),
     });
 
     const payload: ChatApiSuccess = {
@@ -111,6 +127,18 @@ export async function POST(request: Request): Promise<NextResponse> {
       provider: result.provider,
       mode: result.provider === "mock" ? "mock" : "live",
       latencyMs: result.latencyMs,
+      // Verification metadata: what the client asked for (null = server default),
+      // so a client can prove the selection was honored end-to-end.
+      requested: override ? { provider: override.providerId, model: override.modelId } : null,
+      // Tool transparency: which Ostra tools ran, how many provider-side server
+      // steps happened, and citation URLs from web search/fetch.
+      ...(result.toolUsage
+        ? {
+            toolsUsed: result.toolUsage.clientToolCalls,
+            serverToolSteps: result.toolUsage.serverToolSteps,
+            ...(result.toolUsage.sources.length > 0 ? { sources: result.toolUsage.sources } : {}),
+          }
+        : { toolsUsed: [] }),
     };
 
     return NextResponse.json(payload, { headers: noStoreHeaders() });

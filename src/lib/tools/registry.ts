@@ -91,6 +91,42 @@ const OPENROUTER_TOOLS: ToolDefinition[] = [
 
 const NATIVE_TOOLS: ToolDefinition[] = [
   {
+    id: "ostra:datetime",
+    name: "Datetime",
+    provider: "ostra",
+    category: "utility",
+    description:
+      "Get Ostra's current date and time (UTC and server-local, ISO 8601, epoch, weekday). Use whenever the user asks about the current time or date.",
+    inputSchema: { type: "object", properties: {} },
+    enabled: true,
+    requiresAuthentication: false,
+    executionType: "native",
+    requiredCapability: "toolCalling",
+    riskLevel: "low",
+    permission: "read",
+    requiresApproval: false,
+  },
+  {
+    id: "ostra:web_fetch",
+    name: "Web Fetch",
+    provider: "ostra",
+    category: "research",
+    description:
+      "Fetch a public web page by URL and return its readable text. Use for a specific URL the user provides or that a previous step produced. HTTP/HTTPS only.",
+    inputSchema: {
+      type: "object",
+      properties: { url: { type: "string", description: "Absolute http(s) URL of the page to fetch." } },
+      required: ["url"],
+    },
+    enabled: true,
+    requiresAuthentication: false,
+    executionType: "native",
+    requiredCapability: "toolCalling",
+    riskLevel: "low",
+    permission: "read",
+    requiresApproval: false,
+  },
+  {
     id: "ostra:noop",
     name: "Ostra Noop",
     provider: "ostra",

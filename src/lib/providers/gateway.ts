@@ -175,6 +175,7 @@ async function callOpenAICompatible(
   }
   const executedToolIds: string[] = [];
   let serverToolSteps = 0;
+  let multiToolCalls = 0;
   const citations: ToolSource[] = [];
   let lastUsage: ReturnType<typeof parseOpenAIChatResponse>["usage"];
   let lastAssistant = "";
@@ -205,6 +206,7 @@ async function callOpenAICompatible(
       return finishResult(provider, options, parsed.content, startedAt, {
         executedToolIds,
         serverToolSteps,
+        multiToolCalls,
         citations,
         usage: lastUsage,
       });
@@ -213,6 +215,7 @@ async function callOpenAICompatible(
     // The model wants tools. Execute each through Ostra's pipeline and
     // continue the conversation with the results.
     lastAssistant = parsed.content ?? lastAssistant;
+    if (parsed.toolCalls.length > 1) multiToolCalls += parsed.toolCalls.length - 1;
     const assistantMsg: WireMessage = {
       role: "assistant",
       ...(parsed.content ? { content: parsed.content } : { content: null }),
@@ -249,6 +252,7 @@ async function callOpenAICompatible(
       return finishResult(provider, options, note, startedAt, {
         executedToolIds,
         serverToolSteps,
+        multiToolCalls,
         citations,
         usage: lastUsage,
       });
@@ -390,6 +394,7 @@ async function postChatCompletion(
 interface FinishContext {
   executedToolIds: string[];
   serverToolSteps: number;
+  multiToolCalls: number;
   citations: ToolSource[];
   usage?: ReturnType<typeof parseOpenAIChatResponse>["usage"];
 }
@@ -417,6 +422,7 @@ function finishResult(
           sources: ctx.citations,
         }
       : undefined;
+  void ctx.multiToolCalls; // tracked for future per-step tracing
 
   return {
     content,

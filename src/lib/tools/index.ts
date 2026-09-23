@@ -1,5 +1,8 @@
 /** Tools — public API for the control center, routes and tests. */
 export { ToolError, executeTool, evaluateToolForModel, getAllToolStatuses, getToolConnectionStatus, resolveTool } from "./service";
+export { resolveAutoTools } from "./chat-attach";
+export type { ResolvedToolAttachment } from "./chat-attach";
+export { WEB_FETCH_LIMITS, extractReadableText, formatDateTime, validateFetchUrl } from "./executor";
 export type { ResolvedTool } from "./service";
 export { getToolDefinition, isToolAllowed, listToolDefinitions } from "./registry";
 export type { ExecuteToolResult, ToolErrorCode, ToolRequestContext } from "./service";
