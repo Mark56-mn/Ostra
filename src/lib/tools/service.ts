@@ -103,6 +103,21 @@ export function getAllToolStatuses(): ToolStatus[] {
   });
 }
 
+/**
+ * Env-credential names (never values) for the concrete integration
+ * operations, resolved per request so the UI reflects the live environment.
+ */
+export async function getIntegrationOperationEnvCredentials(): Promise<Record<string, string | null>> {
+  const { getEnvCredentialName } = await import("@/lib/integrations/connect-runtime");
+  const out: Record<string, string | null> = {};
+  for (const tool of listToolDefinitions()) {
+    if (tool.executionType === "vercel-connect" && !tool.id.startsWith("connect:")) {
+      out[tool.id] = getEnvCredentialName(tool.provider);
+    }
+  }
+  return out;
+}
+
 export async function getToolConnectionStatus(toolId: string): Promise<{
   toolId: string;
   executionType: ToolDefinition["executionType"];

@@ -353,7 +353,7 @@ The tool registry (`src/lib/tools/`) is provider-independent and server-controll
   compatibility → permission → schema validation → adapter). Vercel Connect execution returns
   `501` until Stage 3 wires per-connector operations.
 
-### Integrations (Vercel Connect)
+### Integrations (Vercel Connect + env-backed adapters)
 
 `src/lib/integrations/` mirrors the **current** Vercel Connect catalog (vercel.com/connect/browse,
 fetched 2026-09-21): 12 tier-1 integrations (GitHub, Vercel, Supabase, Mem0, Firecrawl, AgentMail,
@@ -362,6 +362,15 @@ Google, Cloudflare, Notion, Slack, Telegram Bot, Zapier) enabled in the registry
 available / connected / enabled / authorized / unavailable — a connector existing in Vercel is
 never reported as connected. Connection verification uses `@vercel/connect` scoped runtime
 credentials (deployment OIDC → short-lived provider token, never persisted, never returned).
+
+**Env-backed adapters:** the concrete integration operations
+(`github.list_repositories`, `mem0.search_memory`, `mem0.save_memory`) also execute through plain
+server-side credentials — `GITHUB_TOKEN` (or `GITHUB_PERSONAL_ACCESS_TOKEN`) and `MEM0_API_KEY` —
+which is how Vercel Marketplace integration keys reach the runtime. A live Connect grant takes
+priority when both exist. Credential **presence** is reported via `envCredential` (the variable
+name only) on `/api/integrations` and `/api/tools`; values never appear in any API response, log,
+or model context. When Mem0 is execution-ready, memory-dependent messages automatically trigger
+server-side memory recall, and the chat response reports `memoryRecalled: true`.
 
 Endpoints: `GET /api/tools`, `/api/tools/[id]`, `/api/integrations`, `/api/integrations/[id]`
 (`?probe=1` performs a live connection probe), `POST /api/tools/validate`, `/api/tools/execute`,

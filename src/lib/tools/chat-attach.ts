@@ -25,9 +25,9 @@ const NATIVE_TOOL_IDS = ["ostra:datetime", "ostra:web_fetch"] as const;
 
 /**
  * Native tools attached only when their server-side credential is present.
- * The Firecrawl API key is checked per request so the tool appears exactly
- * when it can actually run — and never leaks whether the key exists beyond
- * the tool being available.
+ * Keys are checked per request so a tool appears exactly when it can actually
+ * run — and never leaks whether the key exists beyond the tool being
+ * available.
  */
 const CREDENTIAL_GATED_NATIVE_TOOLS: Array<{ id: string; envVar: string }> = [
   { id: "firecrawl.search", envVar: "FIRECRAWL_API_KEY" },
@@ -71,10 +71,12 @@ export async function resolveAutoTools(providerId: string, modelId: string): Pro
   }
 
   // Integration operations: attached only when the integration is genuinely
-  // execution-ready right now (live Connect readiness, cached briefly). A
-  // disconnected integration is never advertised to the model. The approval-
-  // gated write tool (mem0.save_memory) is NOT auto-attached; it arrives only
-  // via the explicit approvedToolIds confirmation path in /api/chat.
+  // execution-ready right now — a live Connect grant OR a server-side env
+  // credential (e.g. MEM0_API_KEY / GITHUB_TOKEN synced from the Vercel
+  // Marketplace integration). A disconnected integration without a key is
+  // never advertised to the model. The approval-gated write tool
+  // (mem0.save_memory) is NOT auto-attached; it arrives only via the explicit
+  // approvedToolIds confirmation path in /api/chat.
   if (caps.capabilities.toolCalling === true) {
     const { getExecutionReadiness } = await import("@/lib/integrations/connect-runtime");
     for (const id of INTEGRATION_TOOL_IDS) {

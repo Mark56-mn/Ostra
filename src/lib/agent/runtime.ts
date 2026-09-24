@@ -49,6 +49,12 @@ export interface RuntimeInput {
   approvedToolIds?: string[];
   /** Server-tool step budget / tool-loop hop budget for this request. */
   maxToolCalls?: number;
+  /**
+   * Server-side context messages injected before the history (memory recall,
+   * retrieved tool results). Never client-supplied — the route builds these
+   * from server-side services only.
+   */
+  contextMessages?: ModelMessage[];
 }
 
 export interface RuntimeResult {
@@ -120,7 +126,7 @@ export class AgentRuntime {
       .filter((message) => message.content.trim().length > 0)
       .slice(-this.historyLimit);
 
-    const injected: ModelMessage[] = [];
+    const injected: ModelMessage[] = [...(input.contextMessages ?? [])];
     for (const provider of this.contextProviders) {
       const messages = await provider(input);
       injected.push(...messages);

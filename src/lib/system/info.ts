@@ -93,6 +93,8 @@ export interface ChatApiSuccess {
   serverToolSteps?: number;
   /** Citation URLs from server-side web search/fetch, when any. */
   sources?: Array<{ url: string; title?: string }>;
+  /** True when persistent-memory recall injected context for this turn. */
+  memoryRecalled?: boolean;
 }
 
 /** Error body shape returned by all Ostra API error paths. */

@@ -23,6 +23,7 @@ import { getToolDefinition } from "@/lib/tools/registry";
 import { toolConfigStore } from "@/lib/tools/config";
 import { toFunctionAttachment } from "@/lib/tools/chat-attach";
 import { getActiveProviderConfig, type ChatApiSuccess } from "@/lib/system/info";
+import type { ModelMessage } from "@/lib/model/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -142,6 +143,12 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const providerConfig = getActiveProviderConfig();
 
+  // Memory recall (adapter task §16A): when persistent memory is execution-
+  // ready (Connect grant or MEM0_API_KEY) and the message looks memory-
+  // dependent, relevant memories are retrieved server-side and injected as
+  // context before the model answers. Failures never block the chat.
+  const memoryContext = await buildMemoryContext(message);
+
   try {
     const result = await getAgentRuntime().respond({
       conversationId,
@@ -154,6 +161,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       ...(mergedServerTools.length > 0 ? { tools: mergedServerTools, maxToolCalls: toolAttachment?.maxToolCalls } : {}),
       ...(hasFunctionTools ? { functionTools: allFunctionTools } : {}),
       ...(approvedToolIds.length > 0 ? { approvedToolIds } : {}),
+      ...(memoryContext.length > 0 ? { contextMessages: memoryContext } : {}),
     });
 
     const payload: ChatApiSuccess = {
@@ -177,6 +185,8 @@ export async function POST(request: Request): Promise<NextResponse> {
             ...(result.toolUsage.sources.length > 0 ? { sources: result.toolUsage.sources } : {}),
           }
         : { toolsUsed: [] }),
+      // Memory transparency: whether recall ran for this turn.
+      memoryRecalled: memoryContext.length > 0,
     };
 
     return NextResponse.json(payload, { headers: noStoreHeaders() });
@@ -191,6 +201,66 @@ export async function POST(request: Request): Promise<NextResponse> {
 
 export async function GET(): Promise<NextResponse> {
   return jsonError(405, "method_not_allowed", "Use POST to send a message to Ostra.");
+}
+
+/**
+ * Memory-recall trigger: only messages that plausibly need prior knowledge
+ * incur the recall round trip. Deliberately conservative — a miss costs
+ * nothing and a false negative falls back to the mem0.search_memory tool.
+ */
+const MEMORY_TRIGGER =
+  /\b(remember|recall|memory|remind|my name|my project|my preferences|i told you|earlier|last time|previously|favorite|prefer)\b/i;
+
+const MEMORY_CONTEXT_LIMITS = {
+  maxResults: 5,
+  maxChars: 1_200,
+  timeoutMs: 8_000,
+} as const;
+
+/**
+ * Retrieve relevant persistent memories for a message through the Mem0
+ * adapter (Connect MCP or env credential — whichever is execution-ready).
+ * Structured failures return an empty list; this path can never block or
+ * fail a chat, and never exposes credential material (results are model-
+ * visible memory text only).
+ */
+async function buildMemoryContext(message: string): Promise<ModelMessage[]> {
+  if (!MEMORY_TRIGGER.test(message)) return [];
+  try {
+    const { mem0SearchMemory } = await import("@/lib/integrations/connect-runtime");
+    const { getExecutionReadiness } = await import("@/lib/integrations/connect-runtime");
+    const readiness = await getExecutionReadiness("mem0");
+    if (!readiness.executionReady) return [];
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), MEMORY_CONTEXT_LIMITS.timeoutMs);
+    try {
+      const result = await Promise.race([
+        mem0SearchMemory(message.slice(0, 400)),
+        new Promise<null>((resolve) => {
+          const abort = (): void => resolve(null);
+          controller.signal.addEventListener("abort", abort, { once: true });
+        }),
+      ]);
+      if (!result || !result.ok) return [];
+      const lines = result.results
+        .slice(0, MEMORY_CONTEXT_LIMITS.maxResults)
+        .map((entry) => `- ${entry.text.slice(0, 300)}`)
+        .join("\n")
+        .slice(0, MEMORY_CONTEXT_LIMITS.maxChars);
+      if (lines.length === 0) return [];
+      return [
+        {
+          role: "system" as const,
+          content: `Relevant persistent memories about the user (retrieved via Ostra's memory layer; use if helpful):\n${lines}`,
+        },
+      ];
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return [];
+  }
 }
 
 /**

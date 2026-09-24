@@ -99,7 +99,7 @@ export function MemoryStatus() {
           <p className="mt-2 text-[12px] leading-relaxed text-zinc-600">
             {ready
               ? null
-              : "Memory executes through Vercel Connect, so it becomes live on the Vercel deployment once the Mem0 connector is attached and authorized there. Nothing is simulated in the meantime."}
+              : "Memory executes through Vercel Connect or a server-side MEM0_API_KEY credential (e.g. synced by the Mem0 Marketplace integration). It becomes live once either is present on the deployment — nothing is simulated in the meantime."}
           </p>
         </>
       )}

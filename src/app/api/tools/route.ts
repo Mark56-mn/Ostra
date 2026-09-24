@@ -6,16 +6,20 @@
  */
 import { NextResponse } from "next/server";
 import { noStoreHeaders } from "@/lib/api/errors";
-import { getAllToolStatuses } from "@/lib/tools";
+import { getAllToolStatuses, getIntegrationOperationEnvCredentials } from "@/lib/tools";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(): Promise<NextResponse> {
   const tools = getAllToolStatuses();
+  // Env-credential NAMES (never values) backing each concrete integration
+  // operation, so the UI can distinguish "needs connection" from "env-ready".
+  const envCredentials = await getIntegrationOperationEnvCredentials();
 
   const payload = {
     tools,
+    envCredentials,
     counts: {
       total: tools.length,
       enabled: tools.filter((t) => t.enabled).length,

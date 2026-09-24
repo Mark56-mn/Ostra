@@ -2,6 +2,37 @@
 
 **Date:** 2026-09-23 · **Scope:** Final V1 integration task (Vercel Connect runtime, GitHub, Mem0, permission enforcement), on top of the previously completed model selection and tool-calling stages.
 
+## Addendum — env-backed integration adapters (2026-09-24)
+
+Follows `docs/tasks/OSTRA-TOOL-INTEGRATION-ADAPTER.md` §3–§5: the same GitHub/Mem0 operations that
+run through Vercel Connect now also run through **server-side environment credentials** — the path
+used when Vercel Marketplace integrations sync their keys into the deployment env.
+
+- **Credential resolver** (`connect-runtime.ts`): `ENV_CREDENTIAL_VARS` maps integrations to env
+  var NAMES (`github → GITHUB_TOKEN / GITHUB_PERSONAL_ACCESS_TOKEN`, `mem0 → MEM0_API_KEY`);
+  values are read only inside the adapters at execution time.
+- **Adapters:** `envGithubListRepositories` (GitHub REST `/user/repos`) and
+  `envMem0SearchMemory` / `envMem0SaveMemory` (Mem0 Platform API v3, `Authorization: Token`).
+  The operation functions try Connect first, then env — no silent behavior change when neither
+  exists.
+- **Status model:** `executionReady` now means "Connect grant OR env credential present";
+  statuses carry `envCredential` (the NAME only). Connection (`connected`) still only ever
+  reports a live Connect probe.
+- **Memory recall:** `/api/chat` retrieves relevant Mem0 memories server-side for memory-
+  dependent messages and injects them as context; responses report `memoryRecalled: true`.
+  Failures never block chat. The `mem0.save_memory` write tool remains approval-gated and is
+  never auto-attached.
+- **Verification:** 212/212 tests pass (incl. 8 new env-adapter tests: name-only exposure,
+  blank-value rejection, env-backed readiness, structured secret-free failures); typecheck,
+  lint clean. Real end-to-end calls require `MEM0_API_KEY` / `GITHUB_TOKEN` in the environment.
+
+### Credential-name notice
+
+The workspace `.env` contains `PENROUTER_API_KEY` — the OpenRouter key appears to be stored under
+a misspelled name (should be `OPENROUTER_API_KEY`). The gateway therefore sees no OpenRouter key.
+Fix by renaming the key in Settings → Environment (or the deployment env) to `OPENROUTER_API_KEY`.
+
+
 ## What was built
 
 ### 1. Vercel Connect runtime (`src/lib/integrations/connect-runtime.ts`)
