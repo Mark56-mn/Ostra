@@ -2,7 +2,8 @@
  * Health endpoint security + truthfulness tests.
  *
  * /api/health is publicly reachable: it must never leak API keys, and it
- * must never claim a provider is live merely because a name is configured.
+ * must never claim a provider/model is in use. Ostra has no global default
+ * model — health reports configuration readiness only.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -20,22 +21,18 @@ describe("health payload security", async () => {
 
   it("never includes any key value in the payload", () => {
     const payload = healthWithEnv({
-      AI_PROVIDER: "openrouter",
-      AI_MODEL: "nvidia/nemotron-3.5-lightning:free",
       OPENROUTER_API_KEY: "sk-or-super-secret-value-123",
     });
     const serialized = JSON.stringify(payload);
     assert.equal(serialized.includes("sk-or-super-secret-value-123"), false);
     assert.equal(serialized.includes("secret-value"), false);
-    // Presence flag is fine:
+    // Presence flag is fine, and the provider is honestly reported usable:
     assert.equal(payload.keyPresent, true);
     assert.equal(payload.status, "ok");
   });
 
   it("serializes with no secret-bearing field names at all", () => {
     const payload = healthWithEnv({
-      AI_PROVIDER: "gemini",
-      AI_MODEL: "gemini-flash-latest",
       GEMINI_API_KEY: "AIza-secret",
       MISTRAL_API_KEY: "mistral-secret",
     });
@@ -63,24 +60,33 @@ describe("health payload security", async () => {
     }
   });
 
-  it("reports degraded — not ok — when the provider key is missing", () => {
-    const payload = healthWithEnv({ AI_PROVIDER: "nvidia", AI_MODEL: "nvidia/nemotron-3.5-lightning-30b-a3b" });
-    assert.equal(payload.mode, "provider");
+  it("reports unconfigured — not a fake model — when no provider has a key", () => {
+    const payload = healthWithEnv({});
+    assert.equal(payload.mode, "unselected");
     assert.equal(payload.keyPresent, false);
-    assert.equal(payload.status, "degraded");
+    assert.equal(payload.status, "unconfigured");
     assert.equal(payload.endpointConfigured, false);
+    assert.equal(payload.provider, "none");
+    assert.equal(payload.model, "");
   });
 
-  it("reports error state for an invalid provider with the reason", () => {
-    const payload = healthWithEnv({ AI_PROVIDER: "does-not-exist" });
-    assert.equal(payload.status, "error");
-    assert.match(payload.configError ?? "", /Invalid AI_PROVIDER/);
+  it("is unaffected by AI_PROVIDER / AI_MODEL", () => {
+    const payload = healthWithEnv({ AI_PROVIDER: "does-not-exist", AI_MODEL: "ghost-model" });
+    assert.equal(payload.status, "unconfigured");
+    assert.equal(payload.provider, "none");
+    assert.equal(payload.model, "");
+    assert.equal(JSON.stringify(payload).includes("ghost-model"), false);
+  });
+
+  it("reports the custom endpoint when one is configured", () => {
+    const payload = healthWithEnv({ MODEL_API_URL: "https://example.test/v1", MODEL_API_KEY: "k" });
+    assert.equal(payload.customEndpoint, true);
+    assert.equal(payload.status, "ok");
+    assert.equal(payload.providers.find((p) => p.id === "custom-http")?.active, true);
   });
 
   it("lists per-provider key presence without values", () => {
     const payload = healthWithEnv({
-      AI_PROVIDER: "groq",
-      AI_MODEL: "openai/gpt-oss-120b",
       GROQ_API_KEY: "gsk-secret",
       GEMINI_API_KEY: "also-secret",
     });
@@ -90,7 +96,7 @@ describe("health payload security", async () => {
     assert.equal(groq?.keyPresent, true);
     assert.equal(groq?.active, true);
     assert.equal(gemini?.keyPresent, true);
-    assert.equal(gemini?.active, false);
+    assert.equal(gemini?.active, true);
     assert.equal(openrouter?.keyPresent, false);
     const serialized = JSON.stringify(payload);
     assert.equal(serialized.includes("gsk-secret"), false);
@@ -109,7 +115,7 @@ describe("health payload security", async () => {
       "endpointConfigured",
       "keyPresent",
       "adapter",
-      "configError",
+      "customEndpoint",
       "run",
       "providers",
       "timestamp",

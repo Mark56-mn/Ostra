@@ -21,9 +21,9 @@ interface CatalogProvider {
 
 interface ModelsPayload {
   providers: CatalogProvider[];
-  active: { mode: string; provider: string; model: string; keyPresent: boolean };
-  /** Effective fallback selection: workspace default when set, mock otherwise. */
-  defaultSelection: { provider: string; model: string };
+  active: { mode: string; provider: string; model: string; keyPresent: boolean; selectableProviders: string[] };
+  /** The deliberate workspace default, or null when none is set. */
+  defaultSelection: { provider: string; model: string } | null;
   /** Deliberate server-side workspace default from "Use as default" (null = no deliberate default). */
   workspaceDefault?: { provider: string; model: string; role?: string } | null;
 }
@@ -145,13 +145,13 @@ export function ModelSelector({ className }: { className?: string }) {
             >
               <span className="min-w-0">
                 <span className="block truncate font-medium">
-                  {data?.workspaceDefault ? "Workspace default" : "No default"}
+                  {data?.workspaceDefault ? "Workspace default" : "No model selected"}
                 </span>
                 <span className="block truncate font-mono text-[10px] text-zinc-500">
                   {data
                     ? data.workspaceDefault
-                      ? `${data.defaultSelection.provider} / ${data.defaultSelection.model}`
-                      : "pick a model to chat"
+                      ? `${data.workspaceDefault.provider} / ${data.workspaceDefault.model}`
+                      : "no default — pick a model to chat"
                     : "…"}
                 </span>
               </span>

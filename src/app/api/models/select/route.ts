@@ -2,9 +2,9 @@
  * POST /api/models/select — deliberate model selection (Stage 2).
  *
  * The browser sends an allowlisted { provider, model, role? } selection.
- * The server validates it against the catalog and the environment: unknown
- * providers, non-allowlisted models and providers without a configured key
- * are all rejected. No key ever travels to or from the browser.
+ * The server validates it against the catalog and configuration: unknown
+ * providers, non-allowlisted models and providers without a configured
+ * key/endpoint are all rejected. No key ever travels to or from the browser.
  *
  * - POST { provider, model, role? }        → sets the workspace default
  * - POST { name?, models: [...] }          → saves a task model configuration
@@ -15,7 +15,6 @@ import { logServerError, noStoreHeaders } from "@/lib/api/errors";
 import { getClientKey, getRateLimiter } from "@/lib/api/rate-limit";
 import { ModelSelectionError, validateModelSelection, validateSelectionList } from "@/lib/model-selection";
 import { modelSelectionStore } from "@/lib/model-selection/store";
-import { resolveProviderConfig } from "@/lib/providers/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,16 +86,14 @@ export async function POST(request: Request): Promise<NextResponse> {
 }
 
 export async function GET(): Promise<NextResponse> {
-  const config = resolveProviderConfig();
   const workspace = modelSelectionStore.getState();
   return NextResponse.json(
     {
       default: workspace.default,
       taskConfig: workspace.taskConfig,
-      serverDefault:
-        config.mode === "provider" && config.provider
-          ? { provider: config.provider.id, model: config.provider.model }
-          : workspace.default ?? { provider: "mock", model: "ostra-mock-1" },
+      // The workspace default is the only server-side selection. When it is
+      // null, /api/chat answers `409 model_not_selected` — it never guesses.
+      serverDefault: workspace.default,
       timestamp: new Date().toISOString(),
     },
     { headers: noStoreHeaders() },

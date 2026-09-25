@@ -16,7 +16,9 @@
  * - Groq: models read from console.groq.com/docs/models
  */
 import { getProviderStatusSummary } from "./config-status";
-import { PROVIDERS } from "./registry";
+import { isCustomEndpointConfigured, isProviderKeyPresent } from "./config";
+import { CUSTOM_HTTP_ID, getProviderBaseUrl, PROVIDERS } from "./registry";
+import { readEnv } from "./env";
 
 export interface CatalogModel {
   id: string;
@@ -41,6 +43,8 @@ export interface CatalogProvider {
   freeTierNote: string;
   models: CatalogModel[];
   keyPresent: boolean;
+  /** True when a base URL is configured for this provider. */
+  endpointConfigured: boolean;
 }
 
 const MODEL_CATALOG: Record<string, CatalogModel[]> = {
@@ -187,23 +191,59 @@ export function getModelCatalog(): CatalogProvider[] {
     return {
       id: definition.id,
       name: definition.name,
-      baseUrl: definition.baseUrl,
+      baseUrl: getProviderBaseUrl(definition),
       keyEnvVar: definition.keyEnvVar,
       adapter: definition.adapter,
       docsUrl: definition.docsUrl,
       freeTier: definition.freeTier,
       freeTierNote: definition.freeTierNote,
-      models: MODEL_CATALOG[definition.id] ?? [],
-      keyPresent: status?.keyPresent ?? false,
+      models: getModelsForProvider(definition.id),
+      keyPresent: isProviderKeyPresent(definition.id, definition.keyEnvVar),
+      endpointConfigured: status?.endpointConfigured ?? false,
     };
   });
 }
 
+/**
+ * The custom HTTP endpoint serves whatever models that server hosts, so the
+ * server cannot pre-list them. MODEL_NAME (when set) is offered as the
+ * selectable model; any other well-formed model id is still accepted as an
+ * explicit user selection and sent verbatim to the configured endpoint.
+ */
+function customHttpModels(): CatalogModel[] {
+  const hint = readEnv("MODEL_NAME");
+  if (!hint) return [];
+  return [
+    {
+      id: hint,
+      name: hint,
+      description: "Model name configured through MODEL_NAME for the custom OpenAI-compatible endpoint.",
+      contextWindow: 0,
+      maxOutput: 0,
+      tags: ["custom"],
+      free: false,
+    },
+  ];
+}
+
 export function getModelsForProvider(providerId: string): CatalogModel[] {
+  if (providerId === CUSTOM_HTTP_ID) return customHttpModels();
   return MODEL_CATALOG[providerId] ?? [];
 }
 
+/** Model ids are provider-supplied strings; keep them to a safe shape. */
+const MODEL_ID_PATTERN = /^[A-Za-z0-9._:\/-]{1,200}$/;
+/** Relative-path shapes never identify a model — reject them outright. */
+function isSafeModelId(modelId: string): boolean {
+  return MODEL_ID_PATTERN.test(modelId) && !modelId.startsWith(".") && !modelId.includes("..");
+}
+
 export function isModelAllowed(providerId: string, modelId: string): boolean {
+  if (providerId === CUSTOM_HTTP_ID) {
+    // Explicitly selected on a user-configured endpoint: any well-formed
+    // model id is allowed, but only while an endpoint is configured.
+    return isCustomEndpointConfigured() && isSafeModelId(modelId);
+  }
   return (MODEL_CATALOG[providerId] ?? []).some((m) => m.id === modelId);
 }
 

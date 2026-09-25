@@ -2,13 +2,15 @@
  * Model selection service (Stage 2).
  *
  * Validates a model selection against the server-controlled catalog and
- * enforces the "configured key required" rule: a selection for a provider
- * whose key is not present is rejected rather than failing later at the
+ * enforces the "configured endpoint/credential required" rule: a selection
+ * for a provider whose key (or, for the custom HTTP endpoint, whose
+ * MODEL_API_URL) is not present is rejected rather than failing later at the
  * provider call. Every check runs server-side; nothing here trusts the
  * client beyond the shape of its request.
  */
 import { getProviderStatusSummary } from "@/lib/providers/config-status";
 import { getModelsForProvider, isModelAllowed } from "@/lib/providers/catalog";
+import { CUSTOM_HTTP_ID } from "@/lib/providers/registry";
 import { MODEL_ROLES } from "./tasks-types";
 import type { ModelRole } from "./tasks-types";
 
@@ -17,6 +19,7 @@ export type ModelSelectionErrorCode =
   | "unknown_provider"
   | "model_not_allowed"
   | "key_missing"
+  | "endpoint_missing"
   | "too_many_models"
   | "duplicate_role"
   | "too_many_roles";
@@ -90,6 +93,22 @@ export function validateModelSelection(raw: unknown): ValidatedSelection {
   if (!status) {
     // Do not echo arbitrary provider strings back into the response.
     throw new ModelSelectionError("unknown_provider", "That provider is not in Ostra's allowlist.");
+  }
+
+  // The custom HTTP endpoint is user-configured: what it needs is an endpoint,
+  // and a bearer token only if that server requires one.
+  if (provider === CUSTOM_HTTP_ID) {
+    if (!status.endpointConfigured) {
+      throw new ModelSelectionError(
+        "endpoint_missing",
+        "The custom HTTP endpoint is not configured. Set MODEL_API_URL on the server.",
+        409,
+      );
+    }
+    if (!isModelAllowed(provider, model)) {
+      throw new ModelSelectionError("model_not_allowed", "That model is not in the allowlist for this provider.");
+    }
+    return { provider, model, role: (role ?? "general") as ModelRole };
   }
 
   if (!isModelAllowed(provider, model)) {

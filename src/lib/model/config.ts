@@ -1,9 +1,17 @@
 /**
- * Server-only model configuration.
+ * Server-only model configuration (legacy MODEL_* layer).
  *
- * Reads MODEL_* environment variables and resolves which provider the agent
- * runtime should use. The returned config holds secrets — it must never be
- * imported from a client component and never serialised into a response.
+ * LEGACY / NOT A ROUTING AUTHORITY. Which provider and model a chat turn uses
+ * is decided by the user's explicit selection in @/lib/providers/gateway.ts —
+ * never by these variables. What remains here:
+ *   - MODEL_API_URL / MODEL_API_KEY / MODEL_NAME are read as the ENDPOINT and
+ *     CREDENTIAL CONFIGURATION of the `custom-http` provider;
+ *   - MODEL_TIMEOUT_MS / MODEL_MAX_TOKENS / MODEL_TEMPERATURE are shared run
+ *     parameters also used by the provider gateway;
+ *   - `getMaxMessageLength()` is still used by the settings page.
+ *
+ * The returned config holds secrets — it must never be imported from a client
+ * component and never serialised into a response.
  */
 import { clampInt } from "@/lib/utils";
 import type { ModelConfig } from "./types";
@@ -30,9 +38,10 @@ function readInt(name: string, fallback: number, min: number, max: number): numb
 }
 
 /**
- * MODEL_MODE wins when set. Otherwise Ostra auto-selects: a configured
- * MODEL_API_URL means "http", an empty environment means "mock" so the
- * prototype runs out of the box.
+ * Resolves the legacy mode for the MODEL_* provider helpers.
+ *
+ * MODEL_MODE wins when set. This only affects the legacy `lib/model` helpers
+ * — it cannot make the gateway pick a provider or model for a chat request.
  */
 export function resolveModelMode(apiUrl: string | null): ModelMode {
   const raw = readString("MODEL_MODE")?.toLowerCase();

@@ -3,6 +3,8 @@
  *
  * Ensures validated tool attachments reach the OpenAI-compatible request
  * body correctly and cap the step budget — without any network access.
+ * The provider/model is an explicit per-call selection; the environment only
+ * supplies the credential.
  */
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -24,10 +26,11 @@ function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 }
 
+/** The explicit OpenRouter selection these tool-attachment tests exercise. */
+const OPENROUTER = { providerId: "openrouter", modelId: "nvidia/nemotron-3.5-lightning:free" };
+
 describe("gateway tool attachments", () => {
   it("includes tools and max_tool_calls in the request body for OpenRouter", async () => {
-    process.env.AI_PROVIDER = "openrouter";
-    process.env.AI_MODEL = "nvidia/nemotron-3.5-lightning:free";
     process.env.OPENROUTER_API_KEY = "sk-test-secret-xyz";
     const { resetProviderConfig } = await import("@/lib/providers/config");
     const { callProvider } = await import("@/lib/providers/gateway");
@@ -40,6 +43,7 @@ describe("gateway tool attachments", () => {
     });
 
     await callProvider([{ role: "user", content: "hi" }], {
+      providerOverride: OPENROUTER,
       tools: [{ type: "openrouter:web_search" }, { type: "openrouter:datetime" }],
       maxToolCalls: 7,
     });
@@ -52,8 +56,6 @@ describe("gateway tool attachments", () => {
   });
 
   it("omits tools when none are attached", async () => {
-    process.env.AI_PROVIDER = "openrouter";
-    process.env.AI_MODEL = "nvidia/nemotron-3.5-lightning:free";
     process.env.OPENROUTER_API_KEY = "sk-test-secret-xyz";
     const { resetProviderConfig } = await import("@/lib/providers/config");
     const { callProvider } = await import("@/lib/providers/gateway");
@@ -65,15 +67,13 @@ describe("gateway tool attachments", () => {
       return jsonResponse({ choices: [{ message: { content: "ok" } }] });
     });
 
-    await callProvider([{ role: "user", content: "hi" }], {});
+    await callProvider([{ role: "user", content: "hi" }], { providerOverride: OPENROUTER });
     assert.ok(captured.body);
     assert.equal("tools" in captured.body, false);
     assert.equal("max_tool_calls" in captured.body, false);
   });
 
   it("clamps max_tool_calls to the API maximum of 30", async () => {
-    process.env.AI_PROVIDER = "openrouter";
-    process.env.AI_MODEL = "nvidia/nemotron-3.5-lightning:free";
     process.env.OPENROUTER_API_KEY = "sk-test-secret-xyz";
     const { resetProviderConfig } = await import("@/lib/providers/config");
     const { callProvider } = await import("@/lib/providers/gateway");
@@ -86,6 +86,7 @@ describe("gateway tool attachments", () => {
     });
 
     await callProvider([{ role: "user", content: "hi" }], {
+      providerOverride: OPENROUTER,
       tools: [{ type: "openrouter:web_search" }],
       maxToolCalls: 500,
     });

@@ -58,6 +58,9 @@ async function main(): Promise<void> {
   process.env.MODEL_API_KEY = "stub-key-not-a-real-secret";
   process.env.MODEL_NAME = "stub-model";
 
+  /** Every request names the provider/model it wants — there is no default. */
+  const MODEL_SELECTION = { provider: "custom-http", model: "stub-model" };
+
   let failures = 0;
   const check = (name: string, ok: boolean, detail?: string): void => {
     if (ok) console.log(`  ok    ${name}`);
@@ -71,7 +74,9 @@ async function main(): Promise<void> {
     const response = await fetch(`${BASE}/api/chat`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      // The harness always states its selection; without one /api/chat
+      // correctly answers 409 model_not_selected.
+      body: JSON.stringify({ model: MODEL_SELECTION, ...body }),
     });
     return { status: response.status, payload: (await response.json()) as Record<string, unknown> };
   };
@@ -85,13 +90,21 @@ async function main(): Promise<void> {
 
   console.log("\n=== Test 2: model selection still honored ===");
   {
-    const { status, payload } = await chat({ message: "hi", model: { provider: "openrouter", model: "nvidia/nemotron-3.5-lightning:free" } });
+    const { status, payload } = await chat({ message: "hi", model: { provider: "custom-http", model: "not-a-catalog-model" } });
     if (status === 200) {
-      check("requested echoed", JSON.stringify(payload.requested) === JSON.stringify({ provider: "openrouter", model: "nvidia/nemotron-3.5-lightning:free" }), JSON.stringify(payload.requested));
+      check(
+        "requested echoed",
+        JSON.stringify(payload.requested) === JSON.stringify({ provider: "custom-http", model: "not-a-catalog-model" }),
+        JSON.stringify(payload.requested),
+      );
     } else {
-      // No provider key in THIS workspace (verified: /api/health reports mock
-      // mode) — the honest 409 key_missing refusal is the correct behavior.
-      check("no key → honest 409 refusal (selection validated before use)", status === 409 && JSON.stringify(payload.error).includes("key_missing"), `${status} ${JSON.stringify(payload.error)}`);
+      // A custom HTTP selection with no endpoint configured is refused with a
+      // clear, honest error rather than silently routed to another provider.
+      check(
+        "no endpoint → honest 409 refusal (selection validated before use)",
+        status === 409 && JSON.stringify(payload.error).includes("endpoint_missing"),
+        `${status} ${JSON.stringify(payload.error)}`,
+      );
     }
     const { status: badStatus, payload: bad } = await chat({ message: "hi", model: { provider: "not-a-provider", model: "x" } });
     check("invalid selection rejected 400", badStatus === 400 && JSON.stringify(bad.error).includes("unknown_provider"));

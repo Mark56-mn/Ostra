@@ -89,13 +89,16 @@ async function main(): Promise<void> {
     delete process.env[key];
   }
 
-  // Legacy custom-provider path: MODEL_MODE=http + MODEL_API_URL is the
-  // documented v0.1 mechanism for pointing Ostra at any OpenAI-compatible
-  // endpoint — here, the local stub.
+  // The local stub is reached through the explicit `custom-http` provider:
+  // MODEL_API_URL is endpoint CONFIGURATION, and every call below states the
+  // provider/model it means to use.
   process.env.MODEL_MODE = "http";
   process.env.MODEL_API_URL = "http://127.0.0.1:9321/v1/chat/completions";
   process.env.MODEL_API_KEY = "stub-key-not-a-real-secret";
   process.env.MODEL_NAME = "stub-test-model";
+
+  /** The explicit selection this harness drives. */
+  const SELECTION = { providerId: "custom-http", modelId: "stub-test-model" } as const;
 
   const { resetProviderConfig } = await import("../src/lib/providers/config");
   resetProviderConfig();
@@ -127,7 +130,7 @@ async function main(): Promise<void> {
   {
     stubState.script = [{ content: "Plain answer without tools." }];
     stubState.seen = [];
-    const result = await callProvider([{ role: "user", content: "Hi" }]);
+    const result = await callProvider([{ role: "user", content: "Hi" }], { providerOverride: { ...SELECTION } });
     check("final content returned", result.content === "Plain answer without tools.");
     check("no toolUsage on plain chat", result.toolUsage === undefined);
     check("no secrets in content", !result.content.includes("stub-key"));
@@ -137,27 +140,17 @@ async function main(): Promise<void> {
   {
     stubState.script = [{ content: "Selected." }];
     stubState.seen = [];
-    // A per-request override wins over the env default: point the override at
-    // the stub provider id by temporarily registering the stub as OpenRouter
-    // is not possible — instead verify the override path via AI_BASE_URL.
-    const previous = { ...process.env } as Record<string, string | undefined>;
-    process.env.AI_PROVIDER = "openrouter";
-    process.env.OPENROUTER_API_KEY = "stub-override-key";
-    process.env.AI_BASE_URL = "http://127.0.0.1:9321/v1";
-    resetProviderConfig();
+    // The selection is the routing authority: a different explicit model id
+    // must reach the endpoint verbatim, with no env default involved.
     try {
       const result = await callProvider([{ role: "user", content: "Hi" }], {
-        providerOverride: { providerId: "openrouter", modelId: "test/exact-model" },
+        providerOverride: { providerId: "custom-http", modelId: "test/exact-model" },
       });
       check("upstream request carried the selected model", stubState.seen[0]?.model === "test/exact-model", JSON.stringify(stubState.seen[0]?.model));
       check("result reports the selected model", result.model === "test/exact-model");
     } catch (error) {
       check("override request succeeded", false, error instanceof Error ? error.message : String(error));
     } finally {
-      for (const key of Object.keys(process.env)) {
-        if (!(key in previous)) delete process.env[key];
-      }
-      Object.assign(process.env, previous);
       resetProviderConfig();
       // Restore the legacy custom provider for the remaining tests.
       process.env.MODEL_MODE = "http";
@@ -175,6 +168,7 @@ async function main(): Promise<void> {
     ];
     stubState.seen = [];
     const result = await callProvider([{ role: "user", content: "What time is it?" }], {
+      providerOverride: { ...SELECTION },
       functionTools: fnTools,
     });
     check("loop made 2 model calls", stubState.seen.length === 2, String(stubState.seen.length));
@@ -194,6 +188,7 @@ async function main(): Promise<void> {
     ];
     stubState.seen = [];
     const result = await callProvider([{ role: "user", content: "time twice" }], {
+      providerOverride: { ...SELECTION },
       functionTools: fnTools,
     });
     check("3 model calls for 2 tool hops", stubState.seen.length === 3, String(stubState.seen.length));
@@ -214,6 +209,7 @@ async function main(): Promise<void> {
     ];
     stubState.seen = [];
     const result = await callProvider([{ role: "user", content: "weird tools" }], {
+      providerOverride: { ...SELECTION },
       functionTools: fnTools,
     });
     check("request did not crash", result.content.includes("gracefully"));
@@ -229,6 +225,7 @@ async function main(): Promise<void> {
     stubState.seen = [];
     const started = Date.now();
     const result = await callProvider([{ role: "user", content: "loop forever" }], {
+      providerOverride: { ...SELECTION },
       functionTools: fnTools,
       maxToolCalls: 2,
     });
@@ -253,6 +250,7 @@ async function main(): Promise<void> {
       conversationId: "t-g",
       history: [],
       message: "What time is it?",
+      providerOverride: { ...SELECTION },
       functionTools: fnTools,
     });
     check("runtime made 2 model calls with tools", stubState.seen.length === 2, String(stubState.seen.length));
@@ -260,7 +258,12 @@ async function main(): Promise<void> {
     // Without tools, the note must NOT claim tools exist.
     stubState.script = [{ content: "No tools needed." }];
     stubState.seen = [];
-    await runtime.respond({ conversationId: "t-g2", history: [], message: "Hi" });
+    await runtime.respond({
+      conversationId: "t-g2",
+      history: [],
+      message: "Hi",
+      providerOverride: { ...SELECTION },
+    });
     check("no-tool turn still answered", stubState.seen.length === 1, String(stubState.seen.length));
   }
 

@@ -35,9 +35,10 @@ bun install
 bun run dev          # http://localhost:3000
 ```
 
-No configuration is required. With an empty environment Ostra runs in **mock mode**: replies come
-from a built-in simulated provider so the whole product can be developed and tested before any
-real model endpoint exists.
+No configuration is required to boot, but **Ostra has no default provider and no default model**.
+Set the API key of any provider you want to use, then select that provider and model in the chat
+header (or set a workspace default in `/models`). A chat sent with no selected provider/model is
+refused with `409 model_not_selected` — Ostra never silently picks one for you.
 
 ```bash
 bun run typecheck    # tsc --noEmit
@@ -63,69 +64,74 @@ Browser → POST /api/chat → Agent Runtime → Provider Gateway → Provider A
 | **Mistral** | OpenAI-compatible | **Paid** — no free API tier currently documented | `MISTRAL_API_KEY` | Paid plans include monthly API credits; the free consumer plan does not cover the API |
 | **NVIDIA NIM** | OpenAI-compatible | Free trial credits currently documented | `NVIDIA_API_KEY` | Credit availability and limits may change |
 | **Google Gemini** | Gemini-native | Free usage tier currently documented (rate-limited) | `GEMINI_API_KEY` | Limits vary per model and tier — see ai.google.dev |
-| **Custom** | OpenAI-compatible | — | `AI_API_KEY` | Any OpenAI-compatible endpoint (Kaggle tunnel, VPS, llama.cpp, …) |
-| **Mock** | Built-in | Always free | none | Simulated replies for development |
+| **Custom HTTP** | OpenAI-compatible | — | `MODEL_API_KEY` (optional) | Any OpenAI-compatible endpoint (Kaggle tunnel, VPS, llama.cpp, …) via `MODEL_API_URL` |
+| **Mock** | Built-in | Always free | none | Simulated replies — only when explicitly selected |
 
 > Free tiers and model availability change. Verify current status at each provider's documentation.
 
 > Free tiers and model availability change. Do not present any provider as permanently free.
 > Verify current status at each provider's documentation before depending on a free tier.
 
-### Switching providers
+### Selecting a provider
 
-Switching providers is an **environment variable change**, not a code change:
+Switching providers is a **selection in the UI**, not a code or environment change. The selected
+provider and model are the only routing authority:
+
+```
+Chat header model selector  →  POST /api/chat { model: { provider, model } }
+                           →  /api/models/select "Use as default" (workspace default)
+                           →  /api/chat → AgentRuntime → Gateway → selected provider adapter
+```
+
+The environment supplies **credentials and endpoints** only. Configure the key of every provider
+you want selectable:
 
 ```bash
-# Example: use OpenRouter (models with a :free suffix currently serve at $0)
-AI_PROVIDER=openrouter
+# OpenRouter (models with a :free suffix currently serve at $0)
 OPENROUTER_API_KEY=your-openrouter-key
 
-# Example: use NVIDIA NIM (Nemotron 3.5 Lightning 30B A3B — the task's target model)
-AI_PROVIDER=nvidia
+# NVIDIA NIM
 NVIDIA_API_KEY=your-nvidia-key
 
-# Example: use Gemini (free usage tier currently documented)
-AI_PROVIDER=gemini
+# Gemini (free usage tier currently documented)
 GEMINI_API_KEY=your-gemini-key
 
-# Example: use Groq (paid — no free tier currently documented)
-AI_PROVIDER=groq
+# Groq (paid — no free tier currently documented)
 GROQ_API_KEY=your-groq-key
 ```
 
-The gateway automatically:
+Providers without a key appear in the catalog but are locked, and selecting one returns
+`409 key_missing`. The gateway automatically:
 - Selects the correct adapter (OpenAI-compatible or Gemini-native)
 - Appends `/chat/completions` to the base URL
 - Adds provider-specific headers (e.g. OpenRouter's `HTTP-Referer`)
 - Handles timeout, abort signals, and error classification
-- Falls back to mock mode when no provider is configured
 
-### Default models
+### No global default provider or model
 
-There are **no hardcoded default models**. Model IDs age quickly, and a stale default silently
-breaks an otherwise-correct configuration. Instead:
+`AI_PROVIDER` and `AI_MODEL` are **no longer read anywhere in the application**. Ostra has no
+global default model, and there is no hidden OpenRouter/Qwen/NVIDIA fallback:
 
-- When `AI_PROVIDER` is set, `AI_MODEL` is **required** — omitting it is a configuration error
-  (`AI_MODEL is required when AI_PROVIDER=…`), never a silent guess.
-- The everyday fallback is the **deliberate workspace default** set in the `/models` Model Control
-  Center ("Use as default"). `/api/chat` applies it whenever a request carries no explicit
-  selection; with no workspace default and no env config, Ostra runs in mock mode.
+- Every chat turn runs on the model the user selected (per request) or the **deliberate workspace
+  default** set in `/models` ("Use as default").
+- If neither exists, `/api/chat` returns `409 model_not_selected`:
+  *"No AI model selected. Select a provider and model before starting a chat."*
+- The mock provider answers only when it is **explicitly** selected — never as a fallback.
 
-Set `AI_MODEL` to a model ID from the provider's current documentation. The `/models` page lists
-the allowlisted catalog.
+### Custom HTTP endpoint
 
-### Legacy compatibility
-
-The v0.1 `MODEL_MODE` / `MODEL_API_URL` variables still work:
+The custom OpenAI-compatible endpoint is a first-class, explicitly selectable provider
+(`custom-http`), not an env-driven default:
 
 ```bash
-MODEL_MODE=http
-MODEL_API_URL=https://your-endpoint/v1/chat/completions
-MODEL_API_KEY=your-key
+MODEL_API_URL=https://your-endpoint/v1     # endpoint configuration
+MODEL_API_KEY=your-key                     # only if the endpoint requires auth
+MODEL_NAME=Qwen/Qwen3-1.7B                 # the model id that endpoint serves
 ```
 
-This is treated as a "custom" OpenAI-compatible provider. The new `AI_PROVIDER` system takes
-priority when both are set.
+Then select `custom-http` + that model in the UI. The endpoint is never hard-coded in the
+repository, and a custom selection with no `MODEL_API_URL` is rejected (`409 endpoint_missing`)
+rather than rerouted to another provider.
 
 ## Environment variables
 
@@ -135,14 +141,18 @@ Copy `env.example` to `.env.local` and set the keys you need:
 cp env.example .env.local
 ```
 
-### Provider routing
+### Provider credentials and endpoints
+
+> **Provider and model are selected explicitly by the user/application selection layer.**
+> Environment variables provide credentials and endpoint configuration where required — never the
+> user's hidden model choice. `AI_PROVIDER` and `AI_MODEL` are no longer read.
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `AI_PROVIDER` | no | Active provider: `openrouter`, `groq`, `mistral`, `nvidia`, `gemini`, `mock` |
-| `AI_MODEL` | required when `AI_PROVIDER` is set | Model ID from the provider's current docs (no hardcoded default) |
-| `AI_API_KEY` | no | Generic key override (provider-specific keys take priority) |
-| `AI_BASE_URL` | no | Base URL override (each provider has a default) |
+| `AI_PROVIDER` | **removed** | No longer read; there is no global default provider |
+| `AI_MODEL` | **removed** | No longer read; there is no global default model |
+| `AI_API_KEY` | no | Generic key, used only by the `custom-http` provider |
+| `AI_BASE_URL` | **removed** | No longer read; each provider uses its own documented base URL |
 
 ### Provider API keys (only the active provider needs one)
 
@@ -153,15 +163,16 @@ cp env.example .env.local
 | `GEMINI_API_KEY` | Google Gemini |
 | `GROQ_API_KEY` | Groq |
 | `MISTRAL_API_KEY` | Mistral |
+| `MODEL_API_KEY` | Custom HTTP endpoint (optional — only if it requires auth) |
 
-### Legacy model variables (still supported)
+### Custom HTTP variables
 
 | Variable | Purpose |
 | --- | --- |
-| `MODEL_MODE` | `mock` or `http` (auto-selects if unset) |
-| `MODEL_API_URL` | Full URL of a custom model endpoint |
-| `MODEL_API_KEY` | Bearer token for custom endpoint |
-| `MODEL_NAME` | Model identifier (default `ostra-experimental`) |
+| `MODEL_API_URL` | Base URL of the OpenAI-compatible endpoint selected as `custom-http` |
+| `MODEL_API_KEY` | Bearer token for that endpoint (optional) |
+| `MODEL_NAME` | Model id that endpoint serves |
+| `MODEL_MODE` | Legacy `lib/model` helper only — it cannot route a chat request |
 
 ### Application parameters
 
@@ -378,8 +389,9 @@ Endpoints: `GET /api/tools`, `/api/tools/[id]`, `/api/integrations`, `/api/integ
 
 ### Where future layers plug in
 
-- **Another provider** — add a `ProviderDefinition` to `lib/providers/registry.ts` and implement
-  the adapter if it's not OpenAI-compatible. Nothing else changes. `AI_PROVIDER` selects it.
+- **Another provider** — add a `ProviderDefinition` to `lib/providers/registry.ts`, list its models
+  in `lib/providers/catalog.ts`, and implement the adapter only if it is not OpenAI-compatible.
+  Nothing else changes; the user selects it in the UI like any other provider.
 - **Persistent memory** — `AgentRuntime` accepts `contextProviders`: async functions that return
   extra messages (recalled memories, tool results) placed before the conversation history.
 - **Database (Postgres/Supabase)** — `ConversationRepository` (`lib/conversations/types.ts`) is the
@@ -418,12 +430,13 @@ no durable server-side storage, and rate limiting is per server instance.
    build command is `next build` and the output is served automatically — no configuration file
    needed.
 2. Add environment variables in *Project → Settings → Environment Variables*:
-   - Start with `AI_PROVIDER=mock` (or leave unset) to confirm the deployment works.
-   - Then set `AI_PROVIDER=openrouter` and `OPENROUTER_API_KEY=your-key` for a live provider
-     (models with a `:free` suffix currently serve at $0), or `AI_PROVIDER=nvidia` +
+   - Start with no configuration to confirm the deployment boots (chat is refused with
+     `409 model_not_selected` until a provider and model are selected).
+   - Then set `OPENROUTER_API_KEY=your-key` for a live provider
+     (models with a `:free` suffix currently serve at $0), or `NVIDIA_API_KEY` +
      `NVIDIA_API_KEY=your-key` for Nemotron 3.5 Lightning 30B A3B.
 3. Deploy, then check `https://<your-app>/api/health` — it should report `status: "ok"`.
-4. Switch providers by changing `AI_PROVIDER` and the corresponding key. No code changes needed.
+4. Switch providers in the UI (chat header selector or `/models`). No code changes needed.
 
 See `DEPLOY.md` for a detailed deployment walkthrough.
 

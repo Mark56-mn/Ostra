@@ -1,8 +1,13 @@
-import { resolveProviderConfig } from "@/lib/providers";
+import { getProviderStatusSummary } from "@/lib/providers/config-status";
 
 /**
- * Describes the currently active provider for health/status reporting.
+ * Describes the configured model link for health/status reporting.
  * No secrets are included.
+ *
+ * There is no globally active provider: Ostra has no default model. What is
+ * reported here is whether any provider is usable and whether the custom
+ * OpenAI-compatible endpoint is configured. The model that answers a chat is
+ * always the user's explicit selection (see POST /api/chat).
  */
 export interface ActiveProviderInfo {
   id: string;
@@ -10,50 +15,25 @@ export interface ActiveProviderInfo {
   isConfigured: boolean;
   format: string;
   keyPresent: boolean;
-  configError: string | null;
+  customEndpoint: boolean;
 }
 
-/**
- * Returns info about the active provider (safe to expose to the client).
- */
+/** Returns safe model-link configuration info (no secrets). */
 export function getActiveProviderConfig(): ActiveProviderInfo {
-  const config = resolveProviderConfig();
-
-  if (config.configError) {
-    return {
-      id: "error",
-      modelId: "",
-      isConfigured: false,
-      format: "",
-      keyPresent: false,
-      configError: config.configError,
-    };
-  }
-
-  if (config.mode === "mock" || !config.provider) {
-    return {
-      id: "mock",
-      modelId: "ostra-mock-1",
-      isConfigured: false,
-      format: "openai",
-      keyPresent: false,
-      configError: null,
-    };
-  }
-
+  const summary = getProviderStatusSummary();
   return {
-    id: config.provider.id,
-    modelId: config.provider.model,
-    isConfigured: true,
-    format: config.provider.adapter,
-    keyPresent: Boolean(config.provider.apiKey),
-    configError: null,
+    id: summary.id,
+    modelId: summary.model,
+    isConfigured: summary.mode === "ready",
+    format: summary.adapter ?? "openai-compatible",
+    keyPresent: summary.keyPresent,
+    customEndpoint: summary.customEndpoint,
   };
 }
 
 /** System info shape returned by /api/health. */
 export interface SystemInfo {
-  status: "ok" | "degraded" | "error";
+  status: "ok" | "degraded" | "unconfigured";
   system: string;
   version: string;
   mode: string;
@@ -62,7 +42,6 @@ export interface SystemInfo {
   endpointConfigured: boolean;
   keyPresent: boolean;
   adapter: string;
-  configError?: string;
   run?: { timeoutMs: number; maxTokens: number; temperature: number };
   providers?: Array<{
     id: string;
@@ -83,10 +62,13 @@ export interface ChatApiSuccess {
   provider: string;
   mode: "mock" | "live";
   latencyMs: number;
-  /** Echo of the client's requested selection; null when the server default ran. */
+  /** Echo of the effective provider/model that answered this turn. */
   requested: { provider: string; model: string } | null;
-  /** Where the effective selection came from: request body, workspace default, or env config. */
-  selectionSource: "request" | "workspace" | "env";
+  /**
+   * Where the effective selection came from: this request's `model` field, or
+   * the deliberate workspace default. There is no env-derived source.
+   */
+  selectionSource: "request" | "workspace";
   /** Ostra native tool ids that executed during the turn (empty = none). */
   toolsUsed: string[];
   /** Provider-reported server-tool steps (OpenRouter web search/fetch). */

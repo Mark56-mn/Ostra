@@ -133,6 +133,8 @@ async function main(): Promise<void> {
     ];
     stubState.seen = [];
     const result = await callProvider([{ role: "user", content: "Fetch example.com and summarize." }], {
+      // The explicit selection is what routes the call to the local stub.
+      providerOverride: { providerId: "custom-http", modelId: "stub-test-model" },
       functionTools: fnTools as unknown as typeof fnTools,
     });
     check("three model calls (datetime → fetch → answer)", stubState.seen.length === 3, String(stubState.seen.length));

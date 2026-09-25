@@ -1,140 +1,65 @@
 /**
- * Provider configuration resolver.
+ * Provider credential/endpoint resolution.
  *
- * Reads AI_PROVIDER, AI_MODEL, AI_API_KEY, AI_BASE_URL and per-provider
- * key env vars to resolve the active provider. Falls back to mock mode
- * only when no provider is configured at all.
+ * IMPORTANT: this module resolves CREDENTIALS AND ENDPOINTS ONLY. It never
+ * decides which provider or model a request runs on.
  *
- * Backward compatibility: if the legacy MODEL_MODE=http + MODEL_API_URL
- * vars are set, they are treated as a custom OpenAI-compatible provider.
+ * There is no global default provider and no global default model. Every
+ * chat turn runs on a model the user deliberately chose (a per-request
+ * selection or the workspace default set in the Model Control Center), and
+ * the selected provider's adapter obtains its credential from server-side
+ * configuration here.
  *
- * Invalid AI_PROVIDER values produce a clear error, NOT silent mock mode.
+ * `AI_PROVIDER` / `AI_MODEL` are no longer read anywhere: they used to make
+ * an environment value the routing authority, which is exactly what this
+ * architecture removed.
  */
 import { readEnv, readEnvInt, readTemperature } from "./env";
-import { getProviderDefinition, PROVIDERS } from "./registry";
-import type { ProviderHealthStatus, ResolvedProvider } from "./types";
+import { getProviderBaseUrl, getProviderDefinition, PROVIDERS } from "./registry";
+import type { ProviderHealthStatus } from "./types";
 
-export type ProviderMode = "mock" | "provider";
+/** The explicitly configured OpenAI-compatible endpoint (MODEL_API_URL). */
+export interface CustomEndpointConfig {
+  /** Base URL without the `/chat/completions` suffix; "" when unconfigured. */
+  baseUrl: string;
+  /** Optional bearer token for that endpoint. */
+  apiKey: string | null;
+  /** Optional model hint from MODEL_NAME (never a default selection). */
+  modelHint: string | null;
+}
 
 export interface ProviderConfig {
-  mode: ProviderMode;
-  /** Resolved provider when mode === "provider". */
-  provider: ResolvedProvider | null;
-  /** Legacy: raw MODEL_API_URL when using backward-compat custom endpoint. */
-  legacyApiUrl: string | null;
-  legacyApiKey: string | null;
-  /** Set when AI_PROVIDER is an invalid/unrecognized value. */
-  configError: string | null;
+  customEndpoint: CustomEndpointConfig | null;
 }
 
 let cached: ProviderConfig | null = null;
 
 /**
- * Resolve the active provider from environment variables.
+ * Resolve server-side provider credentials/endpoints.
  *
- * Priority:
- * 1. AI_PROVIDER + AI_MODEL (new system)
- * 2. MODEL_MODE=http + MODEL_API_URL (legacy backward compat)
- * 3. No provider configured → mock mode
- *
- * If AI_PROVIDER is set to an invalid value, returns a configError.
+ * Returns configuration only. Which provider/model a request uses is decided
+ * by the caller's explicit selection — see providers/gateway.ts.
  */
 export function resolveProviderConfig(): ProviderConfig {
   if (cached) return cached;
 
-  // --- New system: AI_PROVIDER ---
-  const providerId = readEnv("AI_PROVIDER");
-  if (providerId) {
-    // Explicit mock is always valid — it must not be treated as an unknown provider.
-    if (providerId.toLowerCase() === "mock") {
-      cached = { mode: "mock", provider: null, legacyApiUrl: null, legacyApiKey: null, configError: null };
-      return cached;
-    }
+  const customBaseUrl = getProviderBaseUrl(
+    getProviderDefinition("custom-http") ?? {
+      id: "custom-http",
+      name: "Custom HTTP",
+      baseUrl: "",
+      keyEnvVar: "MODEL_API_KEY",
+      adapter: "openai-compatible",
+      freeTier: false,
+      freeTierNote: "",
+      docsUrl: "",
+    },
+  );
 
-    const definition = getProviderDefinition(providerId);
-    if (!definition) {
-      const validIds = PROVIDERS.map((p) => p.id).join(", ");
-      cached = {
-        mode: "mock",
-        provider: null,
-        legacyApiUrl: null,
-        legacyApiKey: null,
-        configError: `Invalid AI_PROVIDER="${providerId}". Valid values: ${validIds}`,
-      };
-      return cached;
-    }
-
-    const apiKey = readEnv("AI_API_KEY") ?? readEnv(definition.keyEnvVar);
-    // No silent model fallback: a provider selected without an explicit
-    // AI_MODEL is a configuration error, never a guess from a hardcoded
-    // default that can silently age out of the provider's catalog.
-    const model = readEnv("AI_MODEL");
-    if (!model) {
-      cached = {
-        mode: "mock",
-        provider: null,
-        legacyApiUrl: null,
-        legacyApiKey: null,
-        configError: `AI_MODEL is required when AI_PROVIDER="${providerId}" is set. Set AI_MODEL to a model ID from the provider's current documentation — there is no hardcoded default.`,
-      };
-      return cached;
-    }
-    const baseUrl = readEnv("AI_BASE_URL") ?? definition.baseUrl;
-
-    cached = {
-      mode: "provider",
-      provider: {
-        id: definition.id,
-        name: definition.name,
-        baseUrl,
-        apiKey,
-        model,
-        adapter: definition.adapter,
-        timeoutMs: readEnvInt("MODEL_TIMEOUT_MS", 60_000, 5_000, 300_000),
-        maxTokens: readEnvInt("MODEL_MAX_TOKENS", 1024, 64, 32_000),
-        temperature: readTemperature(),
-      },
-      legacyApiUrl: null,
-      legacyApiKey: null,
-      configError: null,
-    };
-    return cached;
-  }
-
-  // --- Legacy backward compatibility: MODEL_MODE + MODEL_API_URL ---
-  const legacyMode = readEnv("MODEL_MODE")?.toLowerCase();
-  const legacyApiUrl = readEnv("MODEL_API_URL");
-  if (legacyMode === "http" && legacyApiUrl) {
-    const legacyApiKey = readEnv("MODEL_API_KEY");
-    const legacyModel = readEnv("MODEL_NAME") ?? "ostra-experimental";
-
-    cached = {
-      mode: "provider",
-      provider: {
-        id: "custom",
-        name: "Custom Endpoint",
-        baseUrl: legacyApiUrl.replace(/\/chat\/completions\/?$/, "").replace(/\/generate\/?$/, ""),
-        apiKey: legacyApiKey,
-        model: legacyModel,
-        adapter: "openai-compatible",
-        timeoutMs: readEnvInt("MODEL_TIMEOUT_MS", 45_000, 5_000, 300_000),
-        maxTokens: readEnvInt("MODEL_MAX_TOKENS", 768, 64, 32_000),
-        temperature: readTemperature(),
-      },
-      legacyApiUrl,
-      legacyApiKey,
-      configError: null,
-    };
-    return cached;
-  }
-
-  // --- No provider configured → mock mode ---
   cached = {
-    mode: "mock",
-    provider: null,
-    legacyApiUrl: null,
-    legacyApiKey: null,
-    configError: null,
+    customEndpoint: customBaseUrl
+      ? { baseUrl: customBaseUrl, apiKey: readEnv("MODEL_API_KEY") ?? readEnv("AI_API_KEY"), modelHint: readEnv("MODEL_NAME") }
+      : null,
   };
   return cached;
 }
@@ -144,71 +69,64 @@ export function resetProviderConfig(): void {
   cached = null;
 }
 
+/** True when the custom OpenAI-compatible endpoint is configured. */
+export function isCustomEndpointConfigured(): boolean {
+  return Boolean(resolveProviderConfig().customEndpoint);
+}
+
+/** Safe, secret-free per-provider key presence (used by /api/models + settings). */
+export function isProviderKeyPresent(definitionId: string, keyEnvVar: string): boolean {
+  const value = readEnv(keyEnvVar);
+  if (value) return true;
+  // A local/custom endpoint may legitimately run without a bearer token.
+  return definitionId === "custom-http" && Boolean(resolveProviderConfig().customEndpoint);
+}
+
 /** Safe, secret-free health status for the browser. */
 export function getProviderHealthStatus(): ProviderHealthStatus {
-  const config = resolveProviderConfig();
+  const custom = resolveProviderConfig().customEndpoint;
 
-  // Invalid provider configuration
-  if (config.configError) {
+  if (custom) {
     return {
-      id: "error",
-      name: "Configuration Error",
-      provider: "error",
+      id: "custom-http",
+      name: "Custom HTTP",
+      provider: "custom-http",
       model: "",
-      configured: false,
-      keyPresent: false,
+      configured: true,
+      keyPresent: Boolean(custom.apiKey),
       adapter: "openai-compatible",
       freeTier: false,
-      freeTierNote: config.configError,
+      freeTierNote: "Custom OpenAI-compatible endpoint configured via MODEL_API_URL.",
       docsUrl: "",
     };
   }
 
-  // Mock mode (no provider configured, or explicitly mock)
-  if (config.mode === "mock" || !config.provider) {
-    return {
-      id: "mock",
-      name: "Mock",
-      provider: "mock",
-      model: "ostra-mock-1",
-      configured: false,
-      keyPresent: false,
-      adapter: "openai-compatible",
-      freeTier: false,
-      freeTierNote: "Simulated replies for development",
-      docsUrl: "",
-    };
-  }
-
-  // Provider configured — distinguish key-present from key-missing
-  const definition = getProviderDefinition(config.provider.id);
   return {
-    id: config.provider.id,
-    name: config.provider.name,
-    provider: config.provider.name,
-    model: config.provider.model,
-    configured: true,
-    keyPresent: Boolean(config.provider.apiKey),
-    adapter: config.provider.adapter,
-    freeTier: definition?.freeTier ?? false,
-    freeTierNote: definition?.freeTierNote ?? "",
-    docsUrl: definition?.docsUrl ?? "",
+    id: "unselected",
+    name: "No model selected",
+    provider: "unselected",
+    model: "",
+    configured: false,
+    keyPresent: false,
+    adapter: "openai-compatible",
+    freeTier: false,
+    freeTierNote: "Select a provider and model — there is no global default provider or model.",
+    docsUrl: "",
   };
 }
 
 /** List all providers with their configuration status (for settings). */
 export function getAllProviderStatuses(): ProviderHealthStatus[] {
-  const config = resolveProviderConfig();
   return PROVIDERS.map((def) => {
-    const isActive = config.provider?.id === def.id;
-    const keyEnvVar = def.keyEnvVar;
-    const keyPresent = Boolean(readEnv("AI_API_KEY") ?? readEnv(keyEnvVar));
+    const baseUrl = getProviderBaseUrl(def);
+    const keyPresent = isProviderKeyPresent(def.id, def.keyEnvVar);
+    const endpointConfigured = Boolean(baseUrl);
     return {
       id: def.id,
       name: def.name,
       provider: def.name,
-      model: isActive && config.provider ? config.provider.model : "",
-      configured: isActive,
+      model: "",
+      configured: endpointConfigured && keyPresent,
       keyPresent,
       adapter: def.adapter,
       freeTier: def.freeTier,
@@ -216,4 +134,13 @@ export function getAllProviderStatuses(): ProviderHealthStatus[] {
       docsUrl: def.docsUrl,
     };
   });
+}
+
+/** Shared run parameters (timeout / token budget / temperature). */
+export function getRunSettings(): { timeoutMs: number; maxTokens: number; temperature: number } {
+  return {
+    timeoutMs: readEnvInt("MODEL_TIMEOUT_MS", 60_000, 5_000, 300_000),
+    maxTokens: readEnvInt("MODEL_MAX_TOKENS", 1_024, 64, 32_000),
+    temperature: readTemperature(),
+  };
 }

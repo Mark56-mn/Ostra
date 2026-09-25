@@ -1,16 +1,23 @@
 /**
- * Provider registry — the single source of truth for all supported providers.
+ * Provider registry — the catalog of every provider Ostra can route to.
+ *
+ * The registry answers "which providers exist and which models do they
+ * offer". It is a CATALOG, not a selector: nothing here decides which
+ * provider a request uses. The user's explicit selection (per-request or the
+ * workspace default) is the only routing authority.
  *
  * Adding a new provider is:
  *   1. Add a ProviderDefinition to PROVIDERS
- *   2. The gateway picks it up automatically via AI_PROVIDER env var
+ *   2. List its allowlisted models in src/lib/providers/catalog.ts
+ *   3. Implement an adapter only if it is not OpenAI-compatible
  *
- * No frontend, route or runtime code changes needed.
- *
- * Free-tier notes must be factual and qualified — availability and limits may change.
- * See each provider's current documentation before making claims.
+ * No frontend, route or runtime code changes needed — and no env var.
  */
+import { readEnv } from "./env";
 import type { ProviderDefinition } from "./types";
+
+/** Provider id of the OpenAI-compatible custom endpoint (MODEL_API_URL). */
+export const CUSTOM_HTTP_ID = "custom-http";
 
 export const PROVIDERS: ProviderDefinition[] = [
   // Verification note (2026-09-20): model IDs below were checked against each
@@ -66,6 +73,21 @@ export const PROVIDERS: ProviderDefinition[] = [
     freeTierNote: "No free API tier currently documented. Paid plans include monthly API credits; the free consumer plan covers Vibe/Studio, not the API.",
     docsUrl: "https://docs.mistral.ai",
   },
+  {
+    // Any OpenAI-compatible endpoint (Kaggle tunnel, VPS, llama.cpp, vLLM…).
+    // The endpoint URL is CONFIGURATION (MODEL_API_URL), never a default
+    // model choice: this provider only runs when it is explicitly selected.
+    id: CUSTOM_HTTP_ID,
+    name: "Custom HTTP",
+    // Resolved from MODEL_API_URL at call time — see getProviderBaseUrl().
+    baseUrl: "",
+    keyEnvVar: "MODEL_API_KEY",
+    adapter: "openai-compatible",
+    freeTier: false,
+    freeTierNote:
+      "Depends entirely on the endpoint you point MODEL_API_URL at. Costs, limits and available models are whatever that server offers.",
+    docsUrl: "",
+  },
 ];
 
 /** Lookup a provider by its ID. Returns undefined if not found. */
@@ -76,4 +98,25 @@ export function getProviderDefinition(id: string): ProviderDefinition | undefine
 /** List all registered provider IDs. */
 export function listProviderIds(): string[] {
   return PROVIDERS.map((p) => p.id);
+}
+
+/**
+ * Strip the well-known completion suffixes so the gateway can append
+ * `/chat/completions` exactly once. A bare host stays as-is.
+ */
+function normalizeEndpoint(url: string): string {
+  return url.trim().replace(/\/+$/, "").replace(/\/chat\/completions$/i, "").replace(/\/generate$/i, "");
+}
+
+/**
+ * The base URL a provider should be called on.
+ *
+ * Registry providers use their fixed documented base URL. `custom-http` uses
+ * the server-configured MODEL_API_URL. This is endpoint CONFIGURATION — it
+ * never chooses a provider or a model.
+ */
+export function getProviderBaseUrl(definition: ProviderDefinition): string {
+  if (definition.id !== CUSTOM_HTTP_ID) return definition.baseUrl;
+  const configured = readEnv("MODEL_API_URL");
+  return configured ? normalizeEndpoint(configured) : "";
 }

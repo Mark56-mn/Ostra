@@ -3,9 +3,13 @@
  *
  * Flow: AgentRuntime -> gateway.call() -> adapter -> provider API
  *
- * The gateway resolves the active provider from environment, picks the
- * correct adapter (OpenAI-compatible or Gemini), and returns a standard
- * GenerateResult. The runtime never knows which provider is underneath.
+ * The gateway routes on the EXPLICIT selection it is handed
+ * (`options.providerOverride`, already validated against the server catalog
+ * by /api/chat). There is no env-derived default provider/model and no
+ * fallback provider: if no selection is present the call fails with a clear
+ * "no model selected" error rather than silently using another provider.
+ * It picks the correct adapter (OpenAI-compatible or Gemini) and returns a
+ * standard GenerateResult. The runtime never knows which provider is underneath.
  *
  * Stage 2 tool-call handling (the complete loop):
  *
@@ -34,10 +38,10 @@ import type {
 } from "@/lib/model/types";
 import type { ToolSource, ToolUsage } from "@/lib/model/types";
 import { isAbortError } from "@/lib/utils";
-import { readEnv, readEnvInt, readTemperature } from "./env";
-import { resolveProviderConfig } from "./config";
+import { readEnv } from "./env";
+import { getRunSettings } from "./config";
 import { callGemini } from "./gemini-adapter";
-import { getProviderDefinition } from "./registry";
+import { CUSTOM_HTTP_ID, getProviderBaseUrl, getProviderDefinition } from "./registry";
 import { parseOpenAIChatResponse } from "./openai-parser";
 import type { ResolvedProvider } from "./types";
 
@@ -66,79 +70,78 @@ export async function callProvider(
   messages: ModelMessage[],
   options: GenerateOptions = {},
 ): Promise<GenerateResult> {
-  // Stage 2: a validated per-request override wins over the env default.
-  if (options.providerOverride) {
-    const provider = resolveOverrideProvider(options.providerOverride.providerId, options.providerOverride.modelId);
-    if (!provider) {
-      throw new ModelProviderError("Requested provider is not registered", {
-        code: "model_misconfigured",
-        provider: "unknown",
-      });
-    }
-    if (!provider.apiKey) {
-      throw new ModelProviderError(`${provider.name} API key is not configured`, {
-        code: "model_misconfigured",
-        provider: provider.id,
-      });
-    }
-    if (provider.adapter === "gemini") return callGemini(provider, messages, options);
-    return callOpenAICompatible(provider, messages, options);
+  // No selection: refuse rather than quietly routing to some other provider.
+  if (!options.providerOverride) {
+    throw new ModelProviderError(
+      "No AI model selected. Select a provider and model before starting a chat.",
+      { code: "model_not_selected", provider: "none" },
+    );
   }
 
-  const config = resolveProviderConfig();
+  // "mock" is only reachable when it is explicitly selected — it is never an
+  // implicit fallback for a missing selection.
+  if (options.providerOverride.providerId === "mock") {
+    return callMock(messages, options);
+  }
 
-  // Invalid provider configuration — fail with clear error
-  if (config.configError) {
-    throw new ModelProviderError(config.configError, {
+  const provider = resolveOverrideProvider(options.providerOverride.providerId, options.providerOverride.modelId);
+  if (!provider) {
+    throw new ModelProviderError("Requested provider is not registered", {
       code: "model_misconfigured",
       provider: "unknown",
     });
   }
-
-  if (config.mode === "mock" || !config.provider) {
-    return callMock(messages, options);
+  if (provider.id === CUSTOM_HTTP_ID && !provider.baseUrl) {
+    throw new ModelProviderError(
+      "The custom HTTP endpoint is not configured. Set MODEL_API_URL on the server to an OpenAI-compatible endpoint.",
+      { code: "model_misconfigured", provider: provider.id },
+    );
+  }
+  // A custom endpoint may legitimately be keyless (a local llama.cpp server, a
+  // tunnel) — for it the endpoint is the requirement, not a bearer token.
+  if (provider.id !== CUSTOM_HTTP_ID && !provider.apiKey) {
+    throw new ModelProviderError(`${provider.name} API key is not configured`, {
+      code: "model_misconfigured",
+      provider: provider.id,
+    });
   }
 
-  if (config.provider.adapter === "gemini") {
-    return callGemini(config.provider, messages, options);
-  }
-
-  // OpenAI-compatible: OpenRouter, Groq, Mistral, NVIDIA, custom
-  return callOpenAICompatible(config.provider, messages, options);
+  if (provider.adapter === "gemini") return callGemini(provider, messages, options);
+  return callOpenAICompatible(provider, messages, options);
 }
 
 /**
- * Resolve a validated per-request override into a concrete provider config.
- * Returns null when the provider id is not registered.
+ * Resolve a validated explicit selection into a concrete provider config.
+ *
+ * The provider id and model come from the selection; only the credential and
+ * the endpoint come from the environment. Returns null when the provider id
+ * is not registered.
  */
 function resolveOverrideProvider(providerId: string, modelId: string): ResolvedProvider | null {
   const definition = getProviderDefinition(providerId);
   if (!definition) return null;
+  const run = getRunSettings();
   return {
     id: definition.id,
     name: definition.name,
-    baseUrl: readEnv("AI_BASE_URL") ?? definition.baseUrl,
-    apiKey: readEnv("AI_API_KEY") ?? readEnv(definition.keyEnvVar),
+    baseUrl: getProviderBaseUrl(definition),
+    apiKey: readEnv(definition.keyEnvVar),
     model: modelId,
     adapter: definition.adapter,
-    timeoutMs: readEnvInt("MODEL_TIMEOUT_MS", 60_000, 5_000, 300_000),
-    maxTokens: readEnvInt("MODEL_MAX_TOKENS", 1_024, 64, 32_000),
-    temperature: readTemperature(),
+    timeoutMs: run.timeoutMs,
+    maxTokens: run.maxTokens,
+    temperature: run.temperature,
   };
 }
 
 /**
  * Build a ModelProvider that satisfies the existing AgentRuntime contract.
- * Delegates to callProvider internally.
+ * Delegates to callProvider internally; the selection is supplied per call.
  */
 export function createGatewayProvider(): ModelProvider {
-  const config = resolveProviderConfig();
-  const providerName = config.provider?.id ?? "mock";
-  const modelName = config.provider?.model ?? "ostra-mock-1";
-
   return {
-    id: providerName,
-    model: modelName,
+    id: "selection",
+    model: "per-request",
     generate: callProvider,
   };
 }
@@ -152,11 +155,11 @@ async function callOpenAICompatible(
   messages: ModelMessage[],
   options: GenerateOptions = {},
 ): Promise<GenerateResult> {
-  if (!provider.apiKey) {
-    throw new ModelProviderError(
-      `${provider.name} API key is not configured (${provider.id.toUpperCase()}_API_KEY or AI_API_KEY)`,
-      { code: "model_misconfigured", provider: provider.id },
-    );
+  if (!provider.apiKey && provider.id !== CUSTOM_HTTP_ID) {
+    throw new ModelProviderError(`${provider.name} API key is not configured`, {
+      code: "model_misconfigured",
+      provider: provider.id,
+    });
   }
 
   const startedAt = Date.now();
@@ -303,8 +306,9 @@ async function postChatCompletion(
   },
 ): Promise<string> {
   let url: string;
-  if (provider.id === "custom") {
-    // Legacy: baseUrl is already the full endpoint
+  if (provider.id === CUSTOM_HTTP_ID) {
+    // The configured custom endpoint is a base URL; append the OpenAI-
+    // compatible path exactly once.
     url = provider.baseUrl;
     if (!url.includes("/chat/completions")) {
       url = url.replace(/\/$/, "") + "/chat/completions";
@@ -520,7 +524,9 @@ function functionToolSystemPrompt(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Mock adapter (delegates to existing MockModelProvider)
+// Mock adapter (delegates to existing MockModelProvider).
+// Only ever reached through an EXPLICIT `provider: "mock"` selection — never
+// as a fallback for a missing or invalid selection.
 // ---------------------------------------------------------------------------
 
 async function callMock(

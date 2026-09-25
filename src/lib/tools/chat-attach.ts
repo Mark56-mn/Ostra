@@ -103,8 +103,9 @@ export async function resolveAutoTools(providerId: string, modelId: string): Pro
 
 /**
  * Map the effective model id to its capability entry. A capability entry
- * (which is allowlist-wide) covers catalog variants of the same model, so an
- * env-default model like `AI_MODEL` still resolves. Falls back to the raw id.
+ * (which is allowlist-wide) covers catalog variants of the same model, so a
+ * selected model that differs slightly from the verified id still resolves.
+ * Falls back to the raw id.
  */
 function resolveCapabilityModelId(providerId: string, modelId: string): string {
   if (getModelCapabilities(providerId, modelId)) return modelId;

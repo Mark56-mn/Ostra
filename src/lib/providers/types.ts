@@ -2,14 +2,15 @@
  * Provider registry types.
  *
  * Each provider describes how to reach it, which env var holds its key,
- * and which adapter handles its API shape. The gateway resolves the active
- * provider from environment variables at request time.
+ * and which adapter handles its API shape. The gateway resolves the provider
+ * for a request from the USER'S EXPLICIT SELECTION — the environment supplies
+ * credentials and endpoints, never the choice of provider or model.
  */
 
 export type ProviderAdapterType = "openai-compatible" | "gemini";
 
 export interface ProviderDefinition {
-  /** Stable ID used in AI_PROVIDER (e.g. "openrouter", "groq"). */
+  /** Stable selectable provider ID (e.g. "openrouter", "groq", "custom-http"). */
   id: string;
   /** Human-readable name shown in the UI. */
   name: string;

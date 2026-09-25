@@ -51,9 +51,10 @@ interface CapabilityEntry {
 interface ModelsPayload {
   providers: CatalogProvider[];
   capabilities: CapabilityEntry[];
-  active: { mode: string; provider: string; model: string; keyPresent: boolean; configError: string | null };
-  /** Effective fallback selection: the deliberate workspace default when set, mock otherwise. */
-  defaultSelection: { provider: string; model: string };
+  /** Model-link readiness. There is no globally active provider or model. */
+  active: { mode: string; provider: string; model: string; keyPresent: boolean; selectableProviders: string[] };
+  /** The deliberate workspace default, or null when none is set. */
+  defaultSelection: { provider: string; model: string } | null;
   timestamp: string;
 }
 
@@ -275,10 +276,10 @@ export function ModelControlCenter() {
             {data ? (
               <>
                 <span className="ostra-chip border-signal-400/25 text-signal-300">
-                  active: {data.active.provider} / {data.active.model}
+                  no default model · {data.active.selectableProviders.length} selectable
                 </span>
                 <span className={cn("ostra-chip", data.active.keyPresent ? "text-signal-300" : "border-ember-400/30 text-ember-300")}>
-                  {data.active.keyPresent ? "key present" : data.active.mode === "mock" ? "mock mode" : "key missing"}
+                  {data.active.keyPresent ? "keys present" : "no provider keys"}
                 </span>
               </>
             ) : (
@@ -446,7 +447,8 @@ export function ModelControlCenter() {
                       {activeProvider.models.map((model) => {
                         const key = `${activeProvider.id}::${model.id}`;
                         const picked = Boolean(taskPicks[key]);
-                        const isServerDefault = data?.defaultSelection.provider === activeProvider.id && data.defaultSelection.model === model.id;
+                        const isServerDefault =
+                          data?.defaultSelection?.provider === activeProvider.id && data.defaultSelection.model === model.id;
                         const caps = capabilitiesFor(activeProvider.id, model.id);
                         return (
                           <li key={model.id} className="ostra-panel flex flex-col p-4">

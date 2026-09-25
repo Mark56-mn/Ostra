@@ -18,7 +18,7 @@ export function EmptyState({
   onPick: (prompt: string) => void;
   disabled: boolean;
 }) {
-  const isMock = !systemInfo || systemInfo.mode === "mock";
+  const isUnselected = !systemInfo || systemInfo.mode === "unselected";
   const activeToolCount =
     OSTRA_CAPABILITIES.filter((capability) => capability.status === "active" && capability.label.includes("tool")).length;
 
@@ -33,8 +33,8 @@ export function EmptyState({
         <p className="font-mono text-[10px] uppercase tracking-[0.32em] text-zinc-500">Ostra / AI system</p>
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-50 sm:text-[28px]">Talk to Ostra</h1>
         <p className="mx-auto max-w-md text-pretty-ostra text-sm leading-relaxed text-zinc-400">
-          {isMock
-            ? "Ostra online. This is the communication layer of an agent system — in mock mode replies are simulated, so tools stay idle."
+          {isUnselected
+            ? "Ostra online. This is the communication layer of an agent system. No provider or model is selected yet — choose one in the model selector to start a real conversation."
             : OSTRA_GREETING}
         </p>
       </div>
@@ -80,9 +80,9 @@ export function EmptyState({
       <p className="max-w-md text-[11px] leading-relaxed text-zinc-600">
         {systemInfo === null
           ? "Contacting the Ostra API…"
-          : isMock
-            ? `Replies are simulated by the built-in mock provider (${systemInfo.model}). Link a model endpoint to change that.`
-            : `Connected to the model endpoint · ${systemInfo.model} (${systemInfo.provider}).`}
+          : isUnselected
+            ? "No default model — Ostra uses the provider and model you select, and never picks one for you."
+            : `Model providers are configured · ${systemInfo.providers?.filter((p) => p.active).length ?? 0} selectable. Pick one in the model selector.`}
       </p>
     </div>
   );

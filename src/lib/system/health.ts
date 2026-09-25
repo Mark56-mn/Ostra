@@ -8,16 +8,16 @@ import { OSTRA_VERSION } from "@/lib/agent/persona";
 import { getProviderStatusSummary } from "@/lib/providers/config-status";
 
 export interface HealthPayload {
-  status: "ok" | "degraded" | "error";
+  status: "ok" | "degraded" | "unconfigured";
   system: "ostra";
   version: string;
-  mode: "mock" | "provider";
+  mode: "unselected" | "ready";
   provider: string;
   model: string;
   endpointConfigured: boolean;
   keyPresent: boolean;
   adapter: string;
-  configError?: string;
+  customEndpoint: boolean;
   run: { timeoutMs: number; maxTokens: number; temperature: number };
   providers: Array<{
     id: string;
@@ -33,12 +33,11 @@ export interface HealthPayload {
 export function buildHealthPayload(now: Date = new Date()): HealthPayload {
   const summary = getProviderStatusSummary();
 
-  let status: "ok" | "degraded" | "error" = "ok";
-  if (summary.configError) {
-    status = "error";
-  } else if (summary.mode === "provider" && !summary.keyPresent) {
-    status = "degraded";
-  }
+  // Ostra has no globally active model: "ok" means the API is healthy and at
+  // least one provider is selectable. A keyless-but-present provider is
+  // reported honestly rather than claimed as working.
+  const status: "ok" | "degraded" | "unconfigured" = summary.mode === "ready" ? "ok" : "unconfigured";
+  const selectable = summary.providers.filter((provider) => provider.active);
 
   return {
     status,
@@ -47,10 +46,10 @@ export function buildHealthPayload(now: Date = new Date()): HealthPayload {
     mode: summary.mode,
     provider: summary.id,
     model: summary.model,
-    endpointConfigured: summary.mode === "provider" && summary.keyPresent,
-    keyPresent: summary.keyPresent,
+    endpointConfigured: selectable.length > 0,
+    keyPresent: summary.providers.some((provider) => provider.keyPresent),
     adapter: summary.adapter ?? "openai-compatible",
-    configError: summary.configError ?? undefined,
+    customEndpoint: summary.customEndpoint,
     run: summary.run,
     providers: summary.providers.map((provider) => ({
       id: provider.id,

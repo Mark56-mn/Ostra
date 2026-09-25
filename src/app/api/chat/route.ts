@@ -5,9 +5,14 @@
  * Everything upstream of `getAgentRuntime()` happens server-side, so
  * API keys and any other server env var stay hidden.
  *
- * Stage 2: an optional `model` selection ({ provider, model }) may be sent.
- * It is validated against the server-controlled allowlist before use —
- * non-allowlisted models and providers without a configured key are rejected.
+ * The effective provider/model is ALWAYS the caller's explicit selection:
+ * the `model` field of this request, or the deliberate workspace default.
+ * There is no global default provider/model, and no silent fallback — a
+ * request with neither is rejected with `409 model_not_selected`.
+ *
+ * The optional `model` selection ({ provider, model }) is validated against
+ * the server-controlled allowlist before use — non-allowlisted models and
+ * providers without a configured key/endpoint are rejected.
  */
 import { NextResponse } from "next/server";
 import { getAgentRuntime } from "@/lib/agent/runtime";
@@ -16,13 +21,12 @@ import { getClientKey, getRateLimiter } from "@/lib/api/rate-limit";
 import { parseChatRequest } from "@/lib/api/validation";
 import { ModelSelectionError, validateModelSelection } from "@/lib/model-selection";
 import { modelSelectionStore } from "@/lib/model-selection/store";
-import { resolveProviderConfig } from "@/lib/providers/config";
 import { ChatToolError, resolveChatTools } from "@/lib/tools/chat-tools";
 import { resolveAutoTools } from "@/lib/tools/chat-attach";
 import { getToolDefinition } from "@/lib/tools/registry";
 import { toolConfigStore } from "@/lib/tools/config";
 import { toFunctionAttachment } from "@/lib/tools/chat-attach";
-import { getActiveProviderConfig, type ChatApiSuccess } from "@/lib/system/info";
+import { type ChatApiSuccess } from "@/lib/system/info";
 import type { ModelMessage } from "@/lib/model/types";
 
 export const runtime = "nodejs";
@@ -89,20 +93,27 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   // A deliberate server-side workspace default (set via "Use as default" in
   // the Model Control Center) applies when the request carries no per-request
-  // selection. This is the missing link that made provider switches appear to
-  // "snap back" to OpenRouter: the header preference and the server default
-  // were stored in separate places and /api/chat never consulted the latter.
+  // selection. There is NO env default beneath it: with neither, Ostra
+  // refuses the turn with a clear error instead of silently choosing a
+  // provider or model.
   const workspaceDefault = modelSelectionStore.getState().default;
-  const override2: { providerId: string; modelId: string } | null =
+  const selection: { providerId: string; modelId: string } | null =
     override ?? (workspaceDefault ? { providerId: workspaceDefault.provider, modelId: workspaceDefault.model } : null);
 
-  // Stage 2: optional tool attachments, validated against the registry and
-  // the effective provider/model (selection wins over env default).
-  const config = resolveProviderConfig();
-  const hasDeliberateSelection = Boolean(override ?? workspaceDefault);
-  const effective = hasDeliberateSelection && override2
-    ? { providerId: override2.providerId, modelId: override2.modelId }
-    : { providerId: config.provider?.id ?? "mock", modelId: config.provider?.model ?? "ostra-mock-1" };
+  if (!selection) {
+    return jsonError(
+      409,
+      "model_not_selected",
+      "No AI model selected. Select a provider and model before starting a chat.",
+      requestId,
+    );
+  }
+
+  // Tool attachments, validated against the registry and the effective
+  // provider/model. The effective selection is always the deliberate one
+  // (request or workspace default) — never an env default.
+  const effective = selection;
+  const selectionSource: ChatApiSuccess["selectionSource"] = override ? "request" : "workspace";
   let toolAttachment: ReturnType<typeof resolveChatTools>;
   try {
     toolAttachment = resolveChatTools(body.tools, effective);
@@ -141,8 +152,6 @@ export async function POST(request: Request): Promise<NextResponse> {
   const allFunctionTools = [...autoTools.functionTools, ...approvedAttachments];
   const hasFunctionTools = allFunctionTools.length > 0;
 
-  const providerConfig = getActiveProviderConfig();
-
   // Memory recall (adapter task §16A): when persistent memory is execution-
   // ready (Connect grant or MEM0_API_KEY) and the message looks memory-
   // dependent, relevant memories are retrieved server-side and injected as
@@ -155,9 +164,10 @@ export async function POST(request: Request): Promise<NextResponse> {
       history,
       message,
       signal: request.signal,
-      // The deliberate selection (per-request or workspace default) overrides
-      // the env-configured provider for this turn.
-      ...(override2 ? { providerOverride: override2 } : {}),
+      // The deliberate selection (per-request or workspace default) decides
+      // the provider for this turn. There is no env-derived default: with no
+      // selection the request was already rejected above.
+      providerOverride: selection,
       ...(mergedServerTools.length > 0 ? { tools: mergedServerTools, maxToolCalls: toolAttachment?.maxToolCalls } : {}),
       ...(hasFunctionTools ? { functionTools: allFunctionTools } : {}),
       ...(approvedToolIds.length > 0 ? { approvedToolIds } : {}),
@@ -171,11 +181,11 @@ export async function POST(request: Request): Promise<NextResponse> {
       provider: result.provider,
       mode: result.provider === "mock" ? "mock" : "live",
       latencyMs: result.latencyMs,
-      // Verification metadata: what the client asked for, what the server
-      // resolved (null = env default), so any client can prove which provider
-      // answered and a selection can never silently snap back.
-      requested: hasDeliberateSelection && override2 ? { provider: override2.providerId, model: override2.modelId } : null,
-      selectionSource: override ? ("request" as const) : hasDeliberateSelection && override2 ? ("workspace" as const) : ("env" as const),
+      // Verification metadata: what the client asked for and where the
+      // effective selection came from, so any client can prove which
+      // provider/model answered.
+      requested: { provider: selection.providerId, model: selection.modelId },
+      selectionSource,
       // Tool transparency: which Ostra tools ran, how many provider-side server
       // steps happened, and citation URLs from web search/fetch.
       ...(result.toolUsage
@@ -193,8 +203,8 @@ export async function POST(request: Request): Promise<NextResponse> {
   } catch (error) {
     return modelFailure(error, {
       requestId,
-      provider: override?.providerId ?? providerConfig.id,
-      model: override?.modelId ?? providerConfig.modelId,
+      provider: effective.providerId,
+      model: effective.modelId,
     });
   }
 }
@@ -307,6 +317,10 @@ function modelFailure(
 
   if (error instanceof Error) {
     const msg = error.message;
+
+    if (msg.includes("No AI model selected")) {
+      return jsonError(409, "model_not_selected", "No AI model selected. Select a provider and model before starting a chat.", context.requestId);
+    }
 
     if (msg.includes("not configured") || msg.includes("missing")) {
       return jsonError(

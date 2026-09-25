@@ -1,25 +1,31 @@
 /**
- * Secret-free provider/model configuration status.
+ * Secret-free provider configuration status.
  *
  * One source of truth for /api/health, /api/status, /api/models and the
  * Settings page. Everything here is safe to expose: key *presence* only,
  * never values. Settings must not read process.env directly — this module
  * decides what is reportable.
+ *
+ * There is no env-derived active provider. "active" means exactly one thing:
+ * the custom OpenAI-compatible endpoint is configured (MODEL_API_URL) and
+ * therefore selectable. The model that answers a request is always the
+ * user's explicit selection, never a global default.
  */
-import { readTemperature } from "./env";
-import { PROVIDERS } from "./registry";
-import { resolveProviderConfig } from "./config";
+import { getProviderBaseUrl, PROVIDERS } from "./registry";
+import { getRunSettings, isCustomEndpointConfigured, isProviderKeyPresent, resolveProviderConfig } from "./config";
 
 export interface ProviderStatusInfo {
   id: string;
   name: string;
   adapter: string;
-  /** Model in use for the active provider; default model otherwise. */
+  /** Always empty here: no model is selected by configuration alone. */
   model: string;
-  /** True when this provider is the one AI_PROVIDER selects. */
+  /** True when the provider is usable: endpoint + credential are configured. */
   active: boolean;
   keyEnvVar: string;
   keyPresent: boolean;
+  /** True when a base URL is configured for this provider. */
+  endpointConfigured: boolean;
   freeTier: boolean;
   freeTierNote: string;
   docsUrl: string;
@@ -33,98 +39,57 @@ export interface ProviderRunSettings {
 }
 
 export interface ProviderStatusSummary {
-  mode: "mock" | "provider";
-  /** Resolved provider id, or "mock" / "error". */
+  /**
+   * "unselected" — nothing is selected, the user must choose a provider and
+   * model (there is no global default). "ready" — at least one provider is
+   * fully configured and selectable.
+   */
+  mode: "unselected" | "ready";
+  /** Never a provider name: Ostra has no globally active provider. */
   id: string;
   name: string;
   model: string;
   adapter: string | null;
   keyPresent: boolean;
-  configError: string | null;
-  /** Backward-compatible custom endpoint (MODEL_API_URL) in use. */
-  legacy: boolean;
+  /** Configured custom OpenAI-compatible endpoint (MODEL_API_URL). */
+  customEndpoint: boolean;
   run: ProviderRunSettings;
   providers: ProviderStatusInfo[];
-}
-
-function keyPresentFor(definition: { keyEnvVar: string }): boolean {
-  return readRawEnv("AI_API_KEY") !== null || readRawEnv(definition.keyEnvVar) !== null;
-}
-
-function readRawEnv(name: string): string | null {
-  const raw = process.env[name];
-  if (typeof raw !== "string") return null;
-  const trimmed = raw.trim();
-  return trimmed.length > 0 ? trimmed : null;
 }
 
 export function getProviderStatusSummary(): ProviderStatusSummary {
   const config = resolveProviderConfig();
   const providers: ProviderStatusInfo[] = PROVIDERS.map((definition) => {
-    const active = config.mode === "provider" && config.provider?.id === definition.id;
+    const endpointConfigured = Boolean(getProviderBaseUrl(definition));
+    const keyPresent = isProviderKeyPresent(definition.id, definition.keyEnvVar);
     return {
       id: definition.id,
       name: definition.name,
       adapter: definition.adapter,
-      model: active && config.provider ? config.provider.model : "",
-      active,
+      model: "",
+      active: endpointConfigured && keyPresent,
       keyEnvVar: definition.keyEnvVar,
-      keyPresent: keyPresentFor(definition),
+      keyPresent,
+      endpointConfigured,
       freeTier: definition.freeTier,
       freeTierNote: definition.freeTierNote,
       docsUrl: definition.docsUrl,
-      baseUrl: definition.baseUrl,
+      baseUrl: getProviderBaseUrl(definition),
     };
   });
 
-  const run: ProviderRunSettings = {
-    timeoutMs: config.provider?.timeoutMs ?? 60_000,
-    maxTokens: config.provider?.maxTokens ?? 1_024,
-    temperature: config.provider?.temperature ?? readTemperature(),
-  };
+  const run = getRunSettings();
+  const ready = providers.some((provider) => provider.active);
+  const customEndpoint = isCustomEndpointConfigured();
 
-  if (config.configError) {
-    return {
-      mode: "mock",
-      id: "error",
-      name: "Configuration error",
-      model: "",
-      adapter: null,
-      keyPresent: false,
-      configError: config.configError,
-      legacy: false,
-      run,
-      providers,
-    };
-  }
-
-  if (config.mode === "mock" || !config.provider) {
-    return {
-      mode: "mock",
-      id: "mock",
-      name: "Mock",
-      model: "ostra-mock-1",
-      adapter: null,
-      keyPresent: false,
-      configError: null,
-      legacy: false,
-      run,
-      providers,
-    };
-  }
-
-  // Provider configured — resolve the per-provider status rows with the
-  // active provider's resolved model and key state.
-  const provider = config.provider;
   return {
-    mode: "provider",
-    id: provider.id,
-    name: provider.name,
-    model: provider.model,
-    adapter: provider.adapter,
-    keyPresent: Boolean(provider.apiKey),
-    configError: null,
-    legacy: provider.id === "custom",
+    mode: ready ? "ready" : "unselected",
+    id: "none",
+    name: ready ? "No model selected" : "No provider configured",
+    model: "",
+    adapter: null,
+    keyPresent: config.customEndpoint ? Boolean(config.customEndpoint.apiKey) : false,
+    customEndpoint,
     run,
     providers,
   };
