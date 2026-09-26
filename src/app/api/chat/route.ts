@@ -293,6 +293,14 @@ function parseApprovedToolIds(raw: unknown): string[] {
  * Resolve the optional `model` field from the request body into a validated
  * override, or null when absent. Throws-safe: returns a ModelSelectionError
  * when the selection fails validation.
+ *
+ * `mock` is deliberately NOT a selectable provider: it is not in the
+ * PROVIDERS registry, so `validateModelSelection` rejects it as
+ * `unknown_provider`. The mock adapter remains reachable only from
+ * `callProvider()` in tests and local harnesses — never through this route,
+ * and never as a fallback. (An earlier `provider === "mock"` branch here was
+ * dead code: it sat after validation, and had it been reachable it would have
+ * silently DROPPED the caller's selection instead of routing to it.)
  */
 function resolveProviderOverride(
   raw: unknown,
@@ -300,7 +308,6 @@ function resolveProviderOverride(
   if (raw === undefined || raw === null) return { override: null };
   try {
     const selection = validateModelSelection(raw);
-    if (selection.provider === "mock") return { override: null };
     return { override: { providerId: selection.provider, modelId: selection.model } };
   } catch (error) {
     if (error instanceof ModelSelectionError) return { error };

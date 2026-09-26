@@ -65,7 +65,14 @@ Browser → POST /api/chat → Agent Runtime → Provider Gateway → Provider A
 | **NVIDIA NIM** | OpenAI-compatible | Free trial credits currently documented | `NVIDIA_API_KEY` | Credit availability and limits may change |
 | **Google Gemini** | Gemini-native | Free usage tier currently documented (rate-limited) | `GEMINI_API_KEY` | Limits vary per model and tier — see ai.google.dev |
 | **Custom HTTP** | OpenAI-compatible | — | `MODEL_API_KEY` (optional) | Any OpenAI-compatible endpoint (Kaggle tunnel, VPS, llama.cpp, …) via `MODEL_API_URL` |
-| **Mock** | Built-in | Always free | none | Simulated replies — only when explicitly selected |
+
+The catalog is ordered (the registry lists `openrouter` first), but **catalog order is not a
+default**: no provider is ever preselected, in the UI or in any API response. An explicit pick is
+required.
+
+> A `mock` adapter exists in the gateway for tests and local harnesses, but it is **not** a
+> catalogued provider and is not selectable through the UI or `/api/chat` (`400 unknown_provider`).
+> It is never a fallback.
 
 > Free tiers and model availability change. Verify current status at each provider's documentation.
 
@@ -116,7 +123,9 @@ global default model, and there is no hidden OpenRouter/Qwen/NVIDIA fallback:
   default** set in `/models` ("Use as default").
 - If neither exists, `/api/chat` returns `409 model_not_selected`:
   *"No AI model selected. Select a provider and model before starting a chat."*
-- The mock provider answers only when it is **explicitly** selected — never as a fallback.
+- No provider is preselected anywhere. `/models` opens on "No provider selected" rather than
+  defaulting to the first catalog entry, and a provider without a credential is listed but locked
+  and cannot be selected.
 
 ### Custom HTTP endpoint
 
@@ -247,9 +256,11 @@ Status codes: `400` invalid input · `413` body too large · `415` wrong content
 }
 ```
 
-`mode` is `mock` in development (no provider configured) or `provider` when a provider is active.
-Status is `ok` (working), `degraded` (provider set but key missing) or `error` (invalid config).
-Only key **presence** is reported — never key values.
+`mode` is `unselected` (nothing selectable) or `ready` (at least one provider is usable). Status is
+`ok` or `unconfigured`. Only key **presence** is reported — never key values.
+
+`keyPresent` is an aggregate "is any provider usable" flag. For `custom-http` a provider counts as
+usable when its endpoint is configured, even if that endpoint needs no bearer token.
 
 ### `GET /api/models`
 

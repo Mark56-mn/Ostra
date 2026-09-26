@@ -99,13 +99,23 @@ export function ModelSelector({ className }: { className?: string }) {
   const selectedModel = selectedProvider?.models.find((m) => m.id === preference?.model) ?? null;
 
   const isDefault = !preference;
+  // A preference persisted from an earlier session can point at a provider
+  // whose key has since been removed. Say so rather than letting the user
+  // send into a guaranteed 409 key_missing.
+  const selectionLocked = Boolean(selectedProvider && !selectedProvider.keyPresent);
   const label = isDefault
     ? "Default"
-    : selectedModel && selectedProvider
-      ? selectedModel.name
-      : preference.model;
+    : selectionLocked
+      ? `${selectedProvider?.name ?? preference.provider} · no key`
+      : selectedModel && selectedProvider
+        ? selectedModel.name
+        : preference.model;
 
   const pick = (provider: CatalogProvider, model: CatalogModel) => {
+    // A provider with no credential cannot answer: the server rejects it
+    // with 409 key_missing. Refuse here instead of letting the user select a
+    // locked model and fail on send.
+    if (!provider.keyPresent) return;
     setPreference({ provider: provider.id, model: model.id });
     setOpen(false);
   };
@@ -120,7 +130,7 @@ export function ModelSelector({ className }: { className?: string }) {
         aria-label="Select model"
         className="inline-flex min-h-[30px] max-w-[15rem] items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.02] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-400 transition hover:border-white/[0.14] hover:text-zinc-200"
       >
-        <IconLayers size={12} className={cn("shrink-0", preference ? "text-signal-300" : "text-zinc-600")} />
+        <IconLayers size={12} className={cn("shrink-0", selectionLocked ? "text-ember-300" : preference ? "text-signal-300" : "text-zinc-600")} />
         <span className="truncate">{label}</span>
       </button>
 
@@ -175,7 +185,9 @@ export function ModelSelector({ className }: { className?: string }) {
                       key={model.id}
                       type="button"
                       onClick={() => pick(provider, model)}
+                      disabled={!provider.keyPresent}
                       aria-disabled={!provider.keyPresent}
+                      title={provider.keyPresent ? undefined : `Add ${provider.keyEnvVar} on the server to use ${provider.name}`}
                       className={cn(
                         "flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left text-[13px] transition",
                         active ? "bg-signal-500/10 text-signal-200" : "text-zinc-300 hover:bg-white/[0.04]",

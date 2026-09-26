@@ -10,7 +10,7 @@ export const OSTRA_VERSION = "0.1.0";
 export const OSTRA_TAGLINE = "Autonomous agent system · communication layer";
 
 export const OSTRA_GREETING =
-  "Ostra online. I'm the communication layer of an agent system that is still being assembled — today I can talk, and that's it.";
+  "Ostra online. I'm the communication layer of an agent system that is still being assembled. Today I can talk, call tools, and use memory — scheduling and unattended work are not built yet.";
 
 export interface CapabilityNote {
   label: string;
@@ -21,12 +21,14 @@ export interface CapabilityNote {
 /** Surfaced in the UI so the prototype never overstates itself. */
 export const OSTRA_CAPABILITIES: CapabilityNote[] = [
   { label: "Conversation", detail: "Chat routed through the Ostra API", status: "active" },
-  { label: "Model adapter", detail: "Replaceable provider — mock or HTTP", status: "active" },
+  { label: "Provider gateway", detail: "OpenRouter, NVIDIA NIM, Gemini, Groq, Mistral, custom HTTP", status: "active" },
   { label: "Agent runtime", detail: "Turn building, persona, context hooks", status: "active" },
+  { label: "Tool pipeline", detail: "Permission-checked tool execution with approval gating", status: "active" },
   { label: "Datetime tool", detail: "Current date/time via Ostra's tool pipeline", status: "active" },
   { label: "Web fetch tool", detail: "Safe retrieval of public pages", status: "active" },
   { label: "Web search", detail: "Server-side search on supporting providers", status: "active" },
-  { label: "Tools & memory", detail: "Persistent knowledge and actions", status: "planned" },
+  { label: "Memory", detail: "Mem0-backed recall and approval-gated saves", status: "active" },
+  { label: "Integrations", detail: "GitHub, Mem0 and the Vercel Connect catalog", status: "active" },
   { label: "Scheduler", detail: "Unattended background work", status: "planned" },
 ];
 

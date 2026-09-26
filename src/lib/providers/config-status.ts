@@ -12,7 +12,7 @@
  * user's explicit selection, never a global default.
  */
 import { getProviderBaseUrl, PROVIDERS } from "./registry";
-import { getRunSettings, isCustomEndpointConfigured, isProviderKeyPresent, resolveProviderConfig } from "./config";
+import { getRunSettings, isCustomEndpointConfigured, isProviderKeyPresent } from "./config";
 
 export interface ProviderStatusInfo {
   id: string;
@@ -50,6 +50,20 @@ export interface ProviderStatusSummary {
   name: string;
   model: string;
   adapter: string | null;
+  /**
+   * True when AT LEAST ONE catalogued provider is usable — it has a
+   * credential, or (for `custom-http`) an endpoint that needs no token.
+   *
+   * This is an "any provider" flag, not a custom-endpoint flag: it reports
+   * whether the workspace has any usable provider at all. The UI shows it as
+   * "selectable", so deriving it from the custom endpoint alone reported
+   * "no provider keys" even when e.g. OPENROUTER_API_KEY was set.
+   *
+   * Per-provider truth is `providers[].keyPresent`, which for `custom-http`
+   * means "endpoint configured" rather than "bearer token set" — a keyless
+   * local endpoint is genuinely usable. Do not read this aggregate flag as
+   * "a bearer token exists somewhere".
+   */
   keyPresent: boolean;
   /** Configured custom OpenAI-compatible endpoint (MODEL_API_URL). */
   customEndpoint: boolean;
@@ -58,7 +72,6 @@ export interface ProviderStatusSummary {
 }
 
 export function getProviderStatusSummary(): ProviderStatusSummary {
-  const config = resolveProviderConfig();
   const providers: ProviderStatusInfo[] = PROVIDERS.map((definition) => {
     const endpointConfigured = Boolean(getProviderBaseUrl(definition));
     const keyPresent = isProviderKeyPresent(definition.id, definition.keyEnvVar);
@@ -88,7 +101,10 @@ export function getProviderStatusSummary(): ProviderStatusSummary {
     name: ready ? "No model selected" : "No provider configured",
     model: "",
     adapter: null,
-    keyPresent: config.customEndpoint ? Boolean(config.customEndpoint.apiKey) : false,
+    // "Any catalogued provider is usable". A keyless custom endpoint counts as
+    // usable (that is what providers[].keyPresent means for custom-http), so
+    // this stays consistent with per-provider reporting and with `mode`.
+    keyPresent: providers.some((provider) => provider.keyPresent),
     customEndpoint,
     run,
     providers,

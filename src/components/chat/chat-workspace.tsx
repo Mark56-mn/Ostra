@@ -78,7 +78,7 @@ export function ChatWorkspace() {
         <p className="mx-auto max-w-3xl text-[11px] leading-snug text-ember-300/80">
           <span className="font-mono uppercase tracking-[0.16em] text-ember-300">Prototype v0.1.0</span>
           <span className="mx-2 text-ember-500/40">|</span>
-          Conversation layer only — tools, persistent memory and scheduling are not wired up yet.
+          Tools and memory run through the pipeline; scheduling and background autonomy are not built yet.
         </p>
       </div>
 

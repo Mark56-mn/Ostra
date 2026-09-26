@@ -1,6 +1,39 @@
 # Ostra Model Selection Architecture — Handoff
 
-## What changed
+## Follow-up: UI honesty gaps (all five fixed)
+
+A follow-up audit found five places where the interface claimed or implied something the server did
+not actually do. All are fixed, with regression coverage in
+`tests/providers/ui-honesty.test.ts` (14 new tests; suite is 242/242).
+
+1. **The UI defaulted to OpenRouter.** `model-control-center.tsx` seeded its active provider from
+   `providers[0]?.id`, and `openrouter` is first in `PROVIDERS` — so `/models` always opened on
+   OpenRouter, making it look like a hidden default. The Control Center now starts on an explicit
+   "No provider selected" state. Catalog order is unchanged (it is a registry) but nothing selects
+   by position; a test asserts `/api/chat` never references `providers[0]`.
+2. **The chat banner and persona understated the system.** The banner claimed "tools, persistent
+   memory and scheduling are not wired up yet" while the sidebar said memory and GitHub were live,
+   and `OSTRA_CAPABILITIES` listed "Tools & memory" as `planned`. Corrected in
+   `chat-workspace.tsx` and `persona.ts`; the capabilities list now reflects the provider gateway,
+   tool pipeline, memory and integrations as active, with only the scheduler planned.
+3. **`keyPresent` was wrong.** `config-status.ts` derived it from the custom endpoint alone, so
+   `/api/models` reported `keyPresent: false` even with `OPENROUTER_API_KEY` set, and the Control
+   Center rendered "no provider keys" next to a selectable OpenRouter row. It is now
+   "is any provider usable". Note the nuance: for `custom-http`, `keyPresent` means *endpoint
+   configured*, so a keyless local endpoint legitimately counts as usable.
+4. **The mock provider was unreachable, and the docs claimed otherwise.** `/api/chat` had a
+   `provider === "mock"` branch that sat *after* validation — but `mock` is not in `PROVIDERS`, so
+   `validateModelSelection` threw `unknown_provider` first. Had it been reachable it would have
+   silently **dropped** the caller's selection rather than routing to it. The dead branch is removed;
+   the mock is now documented as a gateway-internal adapter for tests/harnesses, not a selectable
+   provider.
+5. **Locked providers were still clickable.** `model-selector.tsx` set `aria-disabled` on keyless
+   providers but left `onClick` live, so a user could select a model that then failed with
+   `409 key_missing` on send. The buttons are now genuinely `disabled` with an explanatory title,
+   and a stale stored preference pointing at a keyless provider is labelled "· no key" instead of
+   looking valid.
+
+## What changed (original task)
 
 - **The environment no longer chooses a provider or model.** `AI_PROVIDER` and `AI_MODEL` are no
   longer read anywhere in the application. There is no global default provider, no global default
@@ -38,8 +71,9 @@
 - `AI_BASE_URL` as a global base-URL override.
 - The legacy `MODEL_MODE=http` + `MODEL_API_URL` path *auto-winning* when nothing was selected —
   those variables are kept, but only as endpoint/credential configuration for `custom-http`.
-- Silent mock fallback: with no selection the gateway refuses. The mock provider still exists and
-  answers, but only through an explicit `provider: "mock"` selection.
+- Silent mock fallback: with no selection the gateway refuses. The mock adapter still exists and
+  answers, but only for a direct `callProvider()` caller (tests, local harnesses) — it is not a
+  catalogued provider and is not selectable through the UI or `/api/chat`.
 
 ## Preserved
 
@@ -101,11 +135,8 @@ Docs: `README.md`, `env.example`, this file.
 
 ## Tests
 
-`bun run test` → **228 passed, 0 failed** (46 suites).
-
-Baseline before this task was **185 passed / 27 failed**: every failure was a stale test asserting
-the removed env-driven behaviour (`AI_PROVIDER` resolving a provider, mock-mode health, an
-`Invalid AI_PROVIDER` config error). Those tests were updated rather than deleted.
+`bun run test` → **242 passed, 0 failed** (50 suites). Baseline before the original task was
+**185 passed / 27 failed**; `tests/providers/ui-honesty.test.ts` adds the 14 follow-up tests.
 
 The new `tests/providers/explicit-selection.test.ts` covers the required cases:
 1. no global provider default (nothing called when no selection);
@@ -119,10 +150,10 @@ The new `tests/providers/explicit-selection.test.ts` covers the required cases:
 
 ## Build/typecheck/lint
 
-- `bun tsc -b --noEmit` — clean.
+- `bun run typecheck` — clean.
 - `bun run lint` — clean.
 - `bun run build` — succeeds (all routes build).
-- `bun run test` — 228/228 pass.
+- `bun run test` — 242/242 pass (50 suites).
 
 ## Remaining limitations
 

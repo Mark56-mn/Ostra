@@ -145,7 +145,10 @@ export function ModelControlCenter() {
       if (!modelsRes.ok) throw new Error(`models HTTP ${modelsRes.status}`);
       const modelsPayload = (await modelsRes.json()) as ModelsPayload;
       setData(modelsPayload);
-      setActiveProviderId((current) => current ?? modelsPayload.providers[0]?.id ?? null);
+      // No provider is preselected. Ostra has no default provider, and
+      // defaulting to catalog order made OpenRouter (first in PROVIDERS)
+      // look like a hidden default. An explicit pick is required instead.
+      setActiveProviderId((current) => (current && modelsPayload.providers.some((p) => p.id === current) ? current : null));
       if (toolsRes.ok) setTools((await toolsRes.json()) as ToolsPayload);
       if (integrationsRes.ok) setIntegrations((await integrationsRes.json()) as IntegrationsPayload);
     } catch {
@@ -163,6 +166,10 @@ export function ModelControlCenter() {
     () => data?.providers.find((provider) => provider.id === activeProviderId) ?? null,
     [data, activeProviderId],
   );
+
+  // Providers that are actually usable are the ones a user can select.
+  // Listing locked providers first would present one as the natural choice.
+  const selectableProviderCount = data?.providers.filter((provider) => provider.keyPresent).length ?? 0;
 
   const capabilitiesFor = useCallback(
     (providerId: string, modelId: string) =>
@@ -279,7 +286,9 @@ export function ModelControlCenter() {
                   no default model · {data.active.selectableProviders.length} selectable
                 </span>
                 <span className={cn("ostra-chip", data.active.keyPresent ? "text-signal-300" : "border-ember-400/30 text-ember-300")}>
-                  {data.active.keyPresent ? "keys present" : "no provider keys"}
+                  {data.active.keyPresent
+                    ? `${selectableProviderCount} provider${selectableProviderCount === 1 ? "" : "s"} selectable`
+                    : "no provider is selectable"}
                 </span>
               </>
             ) : (
@@ -404,6 +413,9 @@ export function ModelControlCenter() {
                           aria-hidden
                         />
                         {provider.name}
+                        {!provider.keyPresent && (
+                          <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-zinc-600">no key</span>
+                        )}
                         {provider.models.length > 0 && (
                           <span className="font-mono text-[10px] text-zinc-500">{provider.models.length}</span>
                         )}
@@ -432,6 +444,14 @@ export function ModelControlCenter() {
                 {[0, 1, 2, 3].map((row) => (
                   <div key={row} className="h-40 animate-pulse rounded-2xl border border-white/[0.06] bg-white/[0.02]" />
                 ))}
+              </div>
+            ) : !activeProvider ? (
+              <div className="ostra-panel p-6 text-center">
+                <p className="text-[13px] font-medium text-zinc-200">No provider selected</p>
+                <p className="mx-auto mt-1.5 max-w-md text-[13px] leading-relaxed text-zinc-400">
+                  Ostra has no default provider. Choose one above to see its allowlisted models — a provider without a
+                  key is listed but locked, and its models cannot be selected until the server has its credential.
+                </p>
               </div>
             ) : (
               activeProvider && (

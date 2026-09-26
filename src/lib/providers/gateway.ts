@@ -78,8 +78,10 @@ export async function callProvider(
     );
   }
 
-  // "mock" is only reachable when it is explicitly selected — it is never an
-  // implicit fallback for a missing selection.
+  // "mock" is a gateway-internal adapter, not a catalogued provider: it is
+  // absent from PROVIDERS, so /api/chat rejects it as `unknown_provider`. It
+  // is reachable only by a direct callProvider() caller (tests, local
+  // harnesses) and is never a fallback for a missing or invalid selection.
   if (options.providerOverride.providerId === "mock") {
     return callMock(messages, options);
   }
@@ -525,8 +527,10 @@ function functionToolSystemPrompt(): string {
 
 // ---------------------------------------------------------------------------
 // Mock adapter (delegates to existing MockModelProvider).
-// Only ever reached through an EXPLICIT `provider: "mock"` selection — never
-// as a fallback for a missing or invalid selection.
+// Reachable only via a direct callProvider() with providerId "mock" — e.g.
+// tests and local harnesses. It is NOT selectable through the UI or
+// /api/chat (absent from the PROVIDERS allowlist) and is never a fallback
+// for a missing or invalid selection.
 // ---------------------------------------------------------------------------
 
 async function callMock(
